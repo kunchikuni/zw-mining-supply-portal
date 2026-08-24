@@ -1,0 +1,190 @@
+// ZW Supplier Portal — core data model
+// Run `npx prisma migrate dev --name init` after setting DATABASE_URL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CompanyType {
+  MINE
+  SUPPLIER
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum UserRole {
+  PLATFORM_ADMIN
+  COMPANY_ADMIN
+  COMPANY_MEMBER
+  VERIFIER
+}
+
+enum DocumentType {
+  COMPANY_REGISTRATION   // CR6 / CR14
+  TAX_CLEARANCE          // ZIMRA ITF263
+  NSSA_COMPLIANCE
+  PRAZ_REGISTRATION
+  SAFETY_CERTIFICATE
+  QUALITY_CERTIFICATE
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum RfqStatus {
+  OPEN
+  CLOSED
+  AWARDED
+  CANCELLED
+}
+
+enum BidStatus {
+  SUBMITTED
+  SHORTLISTED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model Company {
+  id                 String              @id @default(uuid())
+  name               String
+  type               CompanyType
+  province            String?
+  town                String?
+  registrationNumber  String?             @unique
+  verificationStatus  VerificationStatus  @default(UNVERIFIED)
+  isLocallyOwned      Boolean             @default(false)
+  yearsOperating      Int?
+  description         String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  users               User[]
+  documents           Document[]
+  categories          CompanyCategory[]
+  postedRfqs          Rfq[]               @relation("MineRfqs")
+  bids                Bid[]
+  ratingsReceived     Rating[]            @relation("RatedCompany")
+  ratingsGiven        Rating[]            @relation("RatingAuthor")
+
+  @@index([type])
+  @@index([verificationStatus])
+}
+
+model User {
+  id           String    @id @default(uuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id])
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  role         UserRole  @default(COMPANY_MEMBER)
+  phone        String?
+  createdAt    DateTime  @default(now())
+
+  @@index([companyId])
+}
+
+model Category {
+  id          String            @id @default(uuid())
+  name        String            @unique
+  description String?
+
+  companies   CompanyCategory[]
+  rfqs        Rfq[]
+}
+
+model CompanyCategory {
+  companyId  String
+  categoryId String
+  company    Company  @relation(fields: [companyId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  @@id([companyId, categoryId])
+}
+
+model Document {
+  id         String         @id @default(uuid())
+  companyId  String
+  company    Company        @relation(fields: [companyId], references: [id])
+  docType    DocumentType
+  fileUrl    String
+  status     DocumentStatus @default(PENDING)
+  expiresAt  DateTime?
+  reviewedBy String?
+  reviewNote String?
+  uploadedAt DateTime       @default(now())
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model Rfq {
+  id             String    @id @default(uuid())
+  mineCompanyId  String
+  mine           Company   @relation("MineRfqs", fields: [mineCompanyId], references: [id])
+  categoryId     String
+  category       Category  @relation(fields: [categoryId], references: [id])
+  title          String
+  description    String
+  quantity       String?
+  province        String?
+  deadline        DateTime
+  status          RfqStatus @default(OPEN)
+  createdAt       DateTime  @default(now())
+
+  bids            Bid[]
+  ratings         Rating[]
+
+  @@index([mineCompanyId])
+  @@index([status])
+  @@index([categoryId])
+}
+
+model Bid {
+  id                String    @id @default(uuid())
+  rfqId             String
+  rfq               Rfq       @relation(fields: [rfqId], references: [id])
+  supplierCompanyId String
+  supplier          Company   @relation(fields: [supplierCompanyId], references: [id])
+  amount            Decimal   @db.Decimal(14, 2)
+  currency          String    @default("USD")
+  leadTimeDays      Int?
+  notes             String?
+  status            BidStatus @default(SUBMITTED)
+  submittedAt       DateTime  @default(now())
+
+  @@index([rfqId])
+  @@index([supplierCompanyId])
+}
+
+model Rating {
+  id             String   @id @default(uuid())
+  rfqId          String
+  rfq            Rfq      @relation(fields: [rfqId], references: [id])
+  ratedCompanyId String
+  ratedCompany   Company  @relation("RatedCompany", fields: [ratedCompanyId], references: [id])
+  authorCompanyId String
+  authorCompany   Company @relation("RatingAuthor", fields: [authorCompanyId], references: [id])
+  score          Int      // 1-5
+  comment        String?
+  createdAt      DateTime @default(now())
+
+  @@index([ratedCompanyId])
+}
