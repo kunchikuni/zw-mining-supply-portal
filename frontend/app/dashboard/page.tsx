@@ -16,24 +16,24 @@ import { Button } from '@/components/Button';
 import { formatCurrency } from '@/lib/format';
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [company, setCompany] = useState<Company | null>(null);
   const [summary, setSummary] = useState<LocalContentSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    if (!user) {
+    if (!user || !token) {
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
-    getCompany(user.companyId)
+    getCompany(user.companyId, token)
       .then(async (c) => {
         setCompany(c);
         if (c.type === 'MINE') {
-          const data = await getLocalContentSummary(c.id);
+          const data = await getLocalContentSummary(token);
           setSummary(data);
         }
       })
@@ -41,7 +41,7 @@ export default function DashboardPage() {
         setError(err instanceof ApiError ? err.message : 'Could not load the dashboard.'),
       )
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, token]);
 
   useEffect(() => {
     load();

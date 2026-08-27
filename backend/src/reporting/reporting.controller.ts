@@ -1,14 +1,19 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ReportingService } from './reporting.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { JwtPayload } from '../auth/jwt.strategy';
 
 @Controller('reporting')
 export class ReportingController {
   constructor(private readonly reportingService: ReportingService) {}
 
-  // TODO: once auth guards land, restrict this to the mine's own company
-  // (companyId should come from the JWT, not a trusted query param).
+  @UseGuards(JwtAuthGuard)
   @Get('local-content')
-  localContent(@Query('mineCompanyId') mineCompanyId: string) {
-    return this.reportingService.localContentSummary(mineCompanyId);
+  localContent(@CurrentUser() user: JwtPayload) {
+    // mineCompanyId is always the caller's own company — there is no query
+    // param anymore, so there's nothing to spoof to see another company's
+    // procurement numbers.
+    return this.reportingService.localContentSummary(user.companyId);
   }
 }

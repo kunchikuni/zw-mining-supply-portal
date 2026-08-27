@@ -123,11 +123,30 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 
 ## Known gaps / next honest steps
 
-- **Auth hardening**: JWT is in `localStorage` right now (XSS-readable). Production should move to an httpOnly cookie + refresh-token pair, and the backend controllers marked `TODO` need actual role guards — right now anyone can call `PATCH /companies/:id/verification-status`.
+- **Auth hardening**: JWT is still in `localStorage` (XSS-readable). Production should move to an httpOnly cookie + refresh-token pair. Route-level guards are now in place (see "Auth & authorization" below) — this remaining item is about the token's storage, not its enforcement.
+- **Open self-registration into any company**: `POST /auth/register` lets anyone attach themselves as a `COMPANY_MEMBER` to *any* existing `companyId`, including one they didn't create — there's no invite/approval step. Found during the auth-guard review; not fixed yet. Before real companies onboard, this needs either an invite-code flow or a "first user becomes admin, everyone after needs admin approval" rule.
+- **Ownership checks still missing on**: `PATCH /rfqs/:id/status`, `PATCH /bids/:id/status`, and `POST /companies/:id/categories` — all require a valid JWT now, but don't yet verify the caller owns the resource they're modifying. Flagged with `TODO` in each controller.
 - **Type duplication**: `frontend/lib/types.ts` hand-mirrors `schema.prisma`. Fine at this size; once it drifts twice, generate the frontend types from the Prisma schema instead of hand-syncing.
 - **File upload**: `DocumentUploadForm` takes a pasted link, not a real upload — presigned S3 upload is Phase 2.
 - **No notifications**: RFQs don't yet fan out to matching suppliers (WhatsApp/SMS/email) — flagged in `RfqsService.create`.
-- **Reporting endpoint needs auth scoping**: `GET /reporting/local-content` trusts `mineCompanyId` as a query param — once auth guards land, it should be derived from the JWT so a mine can only ever see its own numbers, not query another company's.
+- **RFQ detail is fully public, bids included**: anyone can see every supplier's bid amount on an open RFQ, not just the posting mine. Not addressed in this pass — worth a decision on whether that's actually the desired transparency model or needs restricting.
+
+## Auth & authorization (added this pass)
+
+- `JwtStrategy` + `JwtAuthGuard` — any route with `@UseGuards(JwtAuthGuard)` requires a valid bearer token; `req.user` is the decoded `{ sub, email, companyId, role }` payload.
+- `JwtOptionalAuthGuard` — decodes the token if present but never rejects; used on `GET /companies/:id` so the directory stays public while owners/verifiers get a fuller view.
+- `RolesGuard` + `@Roles(...)` — restricts a route to specific `UserRole` values. Currently used to lock `PATCH /companies/:id/verification-status` and the document review endpoints to `VERIFIER`/`PLATFORM_ADMIN`.
+- **Company ID is never trusted from the client on a write.** `POST /rfqs`, `POST /bids`, and `POST /documents` all derive the acting company from the verified JWT (`user.companyId`), not from the request body — see each controller for the same comment explaining why.
+- **Document links are privacy-gated.** `GET /companies/:id` redacts `fileUrl` on every document unless the requester is the owning company or a verifier/admin — found and fixed during this pass; previously any anonymous visitor could read a company's raw tax-clearance/CR6 links.
+- Verified with `npm install` + `tsc --noEmit` + `next build` (frontend, all 10 routes) and a full manual trace of every guarded endpoint. **Not yet verified with a live server run** — this sandbox can't download the Prisma query engine binary (`binaries.prisma.sh` isn't reachable here), so run this once locally to confirm at runtime:
+  ```bash
+  cd backend && npx prisma migrate dev --name init && npm run start:dev
+  # in another terminal:
+  curl -i http://localhost:3000/reporting/local-content        # expect 401
+  curl -i -X PATCH http://localhost:3000/companies/<id>/verification-status \
+    -H "Authorization: Bearer <a COMPANY_MEMBER token>" -H "Content-Type: application/json" \
+    -d '{"status":"VERIFIED"}'                                  # expect 403
+  ```
 
 ## Working conventions
 

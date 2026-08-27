@@ -97,14 +97,15 @@ export function searchCompanies(filters: {
   return request<Company[]>(`/companies${qs ? `?${qs}` : ''}`);
 }
 
-export function getCompany(id: string) {
-  return request<Company>(`/companies/${id}`);
+export function getCompany(id: string, token?: string | null) {
+  return request<Company>(`/companies/${id}`, { token });
 }
 
-export function attachCategories(companyId: string, categoryIds: string[]) {
+export function attachCategories(companyId: string, categoryIds: string[], token: string) {
   return request(`/companies/${companyId}/categories`, {
     method: 'POST',
     body: JSON.stringify({ categoryIds }),
+    token,
   });
 }
 
@@ -114,12 +115,15 @@ export function getCategories() {
 }
 
 // ---- Documents ----
-export function registerDocument(data: {
-  companyId: string;
-  docType: DocumentType;
-  fileUrl: string;
-}) {
-  return request<DocumentRecord>('/documents', { method: 'POST', body: JSON.stringify(data) });
+export function registerDocument(
+  token: string,
+  data: { docType: DocumentType; fileUrl: string },
+) {
+  return request<DocumentRecord>('/documents', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    token,
+  });
 }
 
 // ---- RFQs ----
@@ -136,28 +140,32 @@ export function getRfq(id: string) {
   return request<Rfq>(`/rfqs/${id}`);
 }
 
-export function createRfq(data: {
-  mineCompanyId: string;
-  categoryId: string;
-  title: string;
-  description: string;
-  quantity?: string;
-  province?: string;
-  deadline: string;
-}) {
-  return request<Rfq>('/rfqs', { method: 'POST', body: JSON.stringify(data) });
+export function createRfq(
+  token: string,
+  data: {
+    categoryId: string;
+    title: string;
+    description: string;
+    quantity?: string;
+    province?: string;
+    deadline: string;
+  },
+) {
+  return request<Rfq>('/rfqs', { method: 'POST', body: JSON.stringify(data), token });
 }
 
 // ---- Bids ----
-export function createBid(data: {
-  rfqId: string;
-  supplierCompanyId: string;
-  amount: number;
-  currency?: string;
-  leadTimeDays?: number;
-  notes?: string;
-}) {
-  return request<Bid>('/bids', { method: 'POST', body: JSON.stringify(data) });
+export function createBid(
+  token: string,
+  data: {
+    rfqId: string;
+    amount: number;
+    currency?: string;
+    leadTimeDays?: number;
+    notes?: string;
+  },
+) {
+  return request<Bid>('/bids', { method: 'POST', body: JSON.stringify(data), token });
 }
 
 export function getBidsForRfq(rfqId: string) {
@@ -165,6 +173,6 @@ export function getBidsForRfq(rfqId: string) {
 }
 
 // ---- Reporting ----
-export function getLocalContentSummary(mineCompanyId: string) {
-  return request<LocalContentSummary>(`/reporting/local-content?mineCompanyId=${mineCompanyId}`);
+export function getLocalContentSummary(token: string) {
+  return request<LocalContentSummary>('/reporting/local-content', { token });
 }

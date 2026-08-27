@@ -2,9 +2,6 @@ import { IsDateString, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateRfqDto {
   @IsString()
-  mineCompanyId: string;
-
-  @IsString()
   categoryId: string;
 
   @IsString()

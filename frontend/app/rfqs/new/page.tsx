@@ -10,7 +10,7 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 
 export default function NewRfqPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -29,15 +29,14 @@ export default function NewRfqPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!user) {
+    if (!user || !token) {
       setError('Sign in with a mining company account to post an RFQ.');
       return;
     }
     setError(null);
     setLoading(true);
     try {
-      const rfq = await createRfq({
-        mineCompanyId: user.companyId,
+      const rfq = await createRfq(token, {
         categoryId,
         title,
         description,

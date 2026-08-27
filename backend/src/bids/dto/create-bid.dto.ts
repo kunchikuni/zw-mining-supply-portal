@@ -4,9 +4,6 @@ export class CreateBidDto {
   @IsString()
   rfqId: string;
 
-  @IsString()
-  supplierCompanyId: string;
-
   @IsNumber()
   @IsPositive()
   amount: number;

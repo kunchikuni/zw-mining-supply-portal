@@ -71,9 +71,7 @@ export default function RfqDetailPage() {
           <BidList bids={rfq.bids ?? []} />
         </div>
         <div>
-          {canBid && user && (
-            <BidForm rfqId={rfq.id} supplierCompanyId={user.companyId} onSubmitted={load} />
-          )}
+          {canBid && <BidForm rfqId={rfq.id} onSubmitted={load} />}
         </div>
       </div>
     </div>

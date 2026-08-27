@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { registerDocument, ApiError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import type { DocumentType } from '@/lib/types';
 import { Button } from './Button';
 import { ErrorBanner } from './ErrorBanner';
@@ -16,13 +17,8 @@ const DOC_TYPE_LABELS: Record<DocumentType, string> = {
   OTHER: 'Other',
 };
 
-export function DocumentUploadForm({
-  companyId,
-  onUploaded,
-}: {
-  companyId: string;
-  onUploaded: () => void;
-}) {
+export function DocumentUploadForm({ onUploaded }: { onUploaded: () => void }) {
+  const { token } = useAuth();
   const [docType, setDocType] = useState<DocumentType>('COMPANY_REGISTRATION');
   const [fileUrl, setFileUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,6 +28,10 @@ export function DocumentUploadForm({
     e.preventDefault();
     setError(null);
 
+    if (!token) {
+      setError('Sign in to add a document.');
+      return;
+    }
     if (!fileUrl.trim()) {
       setError('Add a link to the document before submitting.');
       return;
@@ -39,7 +39,7 @@ export function DocumentUploadForm({
 
     setLoading(true);
     try {
-      await registerDocument({ companyId, docType, fileUrl: fileUrl.trim() });
+      await registerDocument(token, { docType, fileUrl: fileUrl.trim() });
       setFileUrl('');
       onUploaded();
     } catch (err) {

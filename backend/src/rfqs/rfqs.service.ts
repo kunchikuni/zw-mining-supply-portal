@@ -7,9 +7,9 @@ import { RfqStatus, VerificationStatus } from '@prisma/client';
 export class RfqsService {
   constructor(private prisma: PrismaService) {}
 
-  async create(dto: CreateRfqDto) {
+  async create(mineCompanyId: string, dto: CreateRfqDto) {
     const rfq = await this.prisma.rfq.create({
-      data: { ...dto, deadline: new Date(dto.deadline) },
+      data: { ...dto, mineCompanyId, deadline: new Date(dto.deadline) },
     });
     // Phase 2: fan out a WhatsApp/SMS/email notification here to every
     // VERIFIED supplier listed under dto.categoryId — see notifications module.

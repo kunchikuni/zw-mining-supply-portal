@@ -28,7 +28,7 @@ export class CompaniesService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, requester?: { companyId: string; role: string } | null) {
     const company = await this.prisma.company.findUnique({
       where: { id },
       include: {
@@ -38,6 +38,18 @@ export class CompaniesService {
       },
     });
     if (!company) throw new NotFoundException('Company not found');
+
+    const isOwner = requester?.companyId === company.id;
+    const isPrivileged = requester ? ['VERIFIER', 'PLATFORM_ADMIN'].includes(requester.role) : false;
+
+    // Compliance documents (tax clearance, CR6/CR14, etc.) are sensitive —
+    // only the owning company or a verifier/admin should see the actual
+    // file link. Everyone else still sees type + review status, which is
+    // enough to judge how verified a company is without leaking the files.
+    if (!isOwner && !isPrivileged) {
+      company.documents = company.documents.map((doc) => ({ ...doc, fileUrl: '' }));
+    }
+
     return company;
   }
 

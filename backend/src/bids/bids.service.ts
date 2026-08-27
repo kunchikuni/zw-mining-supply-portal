@@ -11,14 +11,14 @@ export class BidsService {
     private rfqsService: RfqsService,
   ) {}
 
-  async create(dto: CreateBidDto) {
-    const eligible = await this.rfqsService.supplierIsEligible(dto.rfqId, dto.supplierCompanyId);
+  async create(supplierCompanyId: string, dto: CreateBidDto) {
+    const eligible = await this.rfqsService.supplierIsEligible(dto.rfqId, supplierCompanyId);
     if (!eligible) {
       throw new ForbiddenException(
         'Supplier must be VERIFIED and listed under this RFQ\'s category to bid',
       );
     }
-    return this.prisma.bid.create({ data: dto });
+    return this.prisma.bid.create({ data: { ...dto, supplierCompanyId } });
   }
 
   findByRfq(rfqId: string) {

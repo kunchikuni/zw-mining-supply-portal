@@ -14,7 +14,7 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 
 export default function CompanyProfilePage() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,11 +22,11 @@ export default function CompanyProfilePage() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    getCompany(id)
+    getCompany(id, token)
       .then(setCompany)
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load this profile.'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, token]);
 
   useEffect(() => {
     load();
@@ -73,9 +73,7 @@ export default function CompanyProfilePage() {
         </div>
       </div>
 
-      {isOwner && (
-        <DocumentUploadForm companyId={company.id} onUploaded={load} />
-      )}
+      {isOwner && <DocumentUploadForm onUploaded={load} />}
     </div>
   );
 }

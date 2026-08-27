@@ -2,18 +2,12 @@
 
 import { FormEvent, useState } from 'react';
 import { createBid, ApiError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { Button } from './Button';
 import { ErrorBanner } from './ErrorBanner';
 
-export function BidForm({
-  rfqId,
-  supplierCompanyId,
-  onSubmitted,
-}: {
-  rfqId: string;
-  supplierCompanyId: string;
-  onSubmitted: () => void;
-}) {
+export function BidForm({ rfqId, onSubmitted }: { rfqId: string; onSubmitted: () => void }) {
+  const { token } = useAuth();
   const [amount, setAmount] = useState('');
   const [leadTimeDays, setLeadTimeDays] = useState('');
   const [notes, setNotes] = useState('');
@@ -24,6 +18,11 @@ export function BidForm({
     e.preventDefault();
     setError(null);
 
+    if (!token) {
+      setError('Sign in as a supplier to submit a bid.');
+      return;
+    }
+
     const parsedAmount = Number(amount);
     if (!amount || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       setError('Enter a bid amount greater than 0.');
@@ -32,9 +31,8 @@ export function BidForm({
 
     setLoading(true);
     try {
-      await createBid({
+      await createBid(token, {
         rfqId,
-        supplierCompanyId,
         amount: parsedAmount,
         leadTimeDays: leadTimeDays ? Number(leadTimeDays) : undefined,
         notes: notes || undefined,

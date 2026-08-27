@@ -7,10 +7,10 @@ import { DocumentStatus } from '@prisma/client';
 export class DocumentsService {
   constructor(private prisma: PrismaService) {}
 
-  register(dto: CreateDocumentDto) {
+  register(companyId: string, dto: CreateDocumentDto) {
     return this.prisma.document.create({
       data: {
-        companyId: dto.companyId,
+        companyId,
         docType: dto.docType,
         fileUrl: dto.fileUrl,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : undefined,
