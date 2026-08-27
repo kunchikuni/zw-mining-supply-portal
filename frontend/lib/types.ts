@@ -88,3 +88,39 @@ export interface AuthUser {
   companyId: string;
   role: string;
 }
+
+export interface CategoryBreakdown {
+  categoryId: string;
+  categoryName: string;
+  totalValue: number;
+  localValue: number;
+  localPercentage: number;
+}
+
+export interface MonthlyTrendPoint {
+  month: string;
+  totalValue: number;
+  localValue: number;
+  localPercentage: number;
+}
+
+export interface RecentAward {
+  bidId: string;
+  supplierName: string;
+  isLocallyOwned: boolean;
+  categoryName: string;
+  amount: number;
+  currency: string;
+  awardedAt: string;
+}
+
+export interface LocalContentSummary {
+  totalAwardedValue: number;
+  localAwardedValue: number;
+  localContentPercentage: number;
+  verifiedLocalSuppliersEngaged: number;
+  openRfqCount: number;
+  byCategory: CategoryBreakdown[];
+  monthlyTrend: MonthlyTrendPoint[];
+  recentAwards: RecentAward[];
+}

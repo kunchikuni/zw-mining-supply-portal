@@ -22,6 +22,9 @@ export function Navbar() {
           </Link>
           {user ? (
             <>
+              <Link href="/dashboard" className="text-gray-600 hover:text-ink">
+                Dashboard
+              </Link>
               <Link href="/rfqs/new" className="text-gray-600 hover:text-ink">
                 Post an RFQ
               </Link>

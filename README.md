@@ -89,6 +89,7 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 | `/rfqs` | `POST /`, `GET /` (open, filterable), `GET /:id`, `PATCH /:id/status` |
 | `/bids` | `POST /`, `GET /?rfqId=`, `PATCH /:id/status` |
 | `/ratings` | `POST /`, `GET /company/:id/average` |
+| `/reporting` | `GET /local-content?mineCompanyId=` — the compliance dashboard's data source |
 
 ## 5. UI architecture
 
@@ -126,7 +127,7 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 - **Type duplication**: `frontend/lib/types.ts` hand-mirrors `schema.prisma`. Fine at this size; once it drifts twice, generate the frontend types from the Prisma schema instead of hand-syncing.
 - **File upload**: `DocumentUploadForm` takes a pasted link, not a real upload — presigned S3 upload is Phase 2.
 - **No notifications**: RFQs don't yet fan out to matching suppliers (WhatsApp/SMS/email) — flagged in `RfqsService.create`.
-- **Local-content reporting dashboard**: the compliance-facing feature that differentiates this from a generic directory — not built yet, next priority after the core loop is validated with real users.
+- **Reporting endpoint needs auth scoping**: `GET /reporting/local-content` trusts `mineCompanyId` as a query param — once auth guards land, it should be derived from the JWT so a mine can only ever see its own numbers, not query another company's.
 
 ## Working conventions
 

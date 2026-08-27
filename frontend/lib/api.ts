@@ -5,6 +5,7 @@ import type {
   CompanyType,
   DocumentRecord,
   DocumentType,
+  LocalContentSummary,
   Rfq,
   VerificationStatus,
 } from './types';
@@ -161,4 +162,9 @@ export function createBid(data: {
 
 export function getBidsForRfq(rfqId: string) {
   return request<Bid[]>(`/bids?rfqId=${rfqId}`);
+}
+
+// ---- Reporting ----
+export function getLocalContentSummary(mineCompanyId: string) {
+  return request<LocalContentSummary>(`/reporting/local-content?mineCompanyId=${mineCompanyId}`);
 }
