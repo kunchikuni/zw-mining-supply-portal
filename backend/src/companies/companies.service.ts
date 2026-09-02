@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { SearchCompaniesDto } from './dto/search-companies.dto';
-import { VerificationStatus } from '@prisma/client';
+import { VerificationStatus, type Document as DocumentModel } from '@prisma/client';
+import type { JwtPayload } from '../auth/jwt.strategy';
 
 @Injectable()
 export class CompaniesService {
@@ -47,13 +48,19 @@ export class CompaniesService {
     // file link. Everyone else still sees type + review status, which is
     // enough to judge how verified a company is without leaking the files.
     if (!isOwner && !isPrivileged) {
-      company.documents = company.documents.map((doc) => ({ ...doc, fileUrl: '' }));
+      company.documents = company.documents.map((doc: DocumentModel) => ({ ...doc, fileUrl: '' }));
     }
 
     return company;
   }
 
-  attachCategories(companyId: string, categoryIds: string[]) {
+  attachCategories(companyId: string, categoryIds: string[], requester: JwtPayload) {
+    const isOwner = requester.companyId === companyId;
+    const isPlatformAdmin = requester.role === 'PLATFORM_ADMIN';
+    if (!isOwner && !isPlatformAdmin) {
+      throw new ForbiddenException('You can only edit your own company\'s categories');
+    }
+
     return this.prisma.$transaction(
       categoryIds.map((categoryId) =>
         this.prisma.companyCategory.upsert({

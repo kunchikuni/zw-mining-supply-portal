@@ -42,9 +42,7 @@ export class CompaniesController {
     @Param('id') id: string,
     @Body('categoryIds') categoryIds: string[],
   ) {
-    // TODO: once every company has a defined owner check, restrict this to
-    // id === user.companyId (or a platform admin).
-    return this.companiesService.attachCategories(id, categoryIds);
+    return this.companiesService.attachCategories(id, categoryIds, user);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

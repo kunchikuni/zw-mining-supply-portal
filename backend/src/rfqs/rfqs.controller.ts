@@ -30,8 +30,11 @@ export class RfqsController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id/status')
-  setStatus(@Param('id') id: string, @Body('status') status: RfqStatus) {
-    // TODO: once RFQ ownership is checked, restrict this to the posting mine.
-    return this.rfqsService.setStatus(id, status);
+  setStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body('status') status: RfqStatus,
+  ) {
+    return this.rfqsService.setStatus(id, user, status);
   }
 }

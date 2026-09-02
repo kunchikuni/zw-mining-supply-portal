@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { BidStatus, RfqStatus } from '@prisma/client';
+import { BidStatus, Prisma, RfqStatus } from '@prisma/client';
+
+// Matches the `include` clause on the acceptedBids query below — kept as a
+// named type so it doesn't collapse to implicit `any` if Prisma client
+// generation is ever interrupted, and stays in sync automatically if the
+// include clause changes.
+type AcceptedBidWithRelations = Prisma.BidGetPayload<{
+  include: { supplier: true; rfq: { include: { category: true } } };
+}>;
 
 export interface CategoryBreakdown {
   categoryId: string;
@@ -105,7 +113,7 @@ export class ReportingService {
 
     const monthlyTrend = buildTrendSeries(monthMap, TREND_MONTHS);
 
-    const recentAwards: RecentAward[] = acceptedBids.slice(0, 5).map((bid) => ({
+    const recentAwards: RecentAward[] = acceptedBids.slice(0, 5).map((bid: AcceptedBidWithRelations) => ({
       bidId: bid.id,
       supplierName: bid.supplier.name,
       isLocallyOwned: bid.supplier.isLocallyOwned,

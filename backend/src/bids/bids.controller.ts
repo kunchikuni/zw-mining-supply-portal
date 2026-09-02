@@ -25,8 +25,11 @@ export class BidsController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id/status')
-  setStatus(@Param('id') id: string, @Body('status') status: BidStatus) {
-    // TODO: restrict to the RFQ-owning mine once ownership checks land.
-    return this.bidsService.setStatus(id, status);
+  setStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body('status') status: BidStatus,
+  ) {
+    return this.bidsService.setStatus(id, user, status);
   }
 }

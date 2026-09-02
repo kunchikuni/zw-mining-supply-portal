@@ -7,7 +7,7 @@ export class JwtOptionalAuthGuard extends AuthGuard('jwt') {
   // just fall back to req.user = null so public routes like GET /companies/:id
   // can still render for anonymous visitors, while authenticated visitors
   // get the extra fields (e.g. document links) their token entitles them to.
-  handleRequest(_err: unknown, user: unknown) {
+  handleRequest(_err: any, user: any): any {
     return user || null;
   }
 }

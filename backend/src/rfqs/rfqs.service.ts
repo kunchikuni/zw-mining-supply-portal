@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRfqDto } from './dto/create-rfq.dto';
 import { RfqStatus, VerificationStatus } from '@prisma/client';
+import type { JwtPayload } from '../auth/jwt.strategy';
 
 @Injectable()
 export class RfqsService {
@@ -37,7 +38,16 @@ export class RfqsService {
     return rfq;
   }
 
-  setStatus(id: string, status: RfqStatus) {
+  async setStatus(id: string, requester: JwtPayload, status: RfqStatus) {
+    const rfq = await this.prisma.rfq.findUnique({ where: { id } });
+    if (!rfq) throw new NotFoundException('RFQ not found');
+
+    const isOwner = rfq.mineCompanyId === requester.companyId;
+    const isPlatformAdmin = requester.role === 'PLATFORM_ADMIN';
+    if (!isOwner && !isPlatformAdmin) {
+      throw new ForbiddenException('Only the mine that posted this RFQ can change its status');
+    }
+
     return this.prisma.rfq.update({ where: { id }, data: { status } });
   }
 
