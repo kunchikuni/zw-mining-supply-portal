@@ -45,7 +45,7 @@ zw-supplier-portal/
 │       ├── main.ts
 │       ├── app.module.ts
 │       ├── prisma/              # PrismaService, global module
-│       ├── auth/                # register/login, JWT issuance
+│       ├── auth/                # register/login, JWT issuance, invite codes
 │       ├── companies/           # directory, search, verification status
 │       ├── categories/          # procurement taxonomy
 │       ├── documents/           # compliance doc intake + review queue
@@ -82,9 +82,9 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 
 | Resource | Endpoints |
 |---|---|
-| `/auth` | `POST /register`, `POST /login` |
-| `/companies` | `POST /`, `GET /` (search/filter), `GET /:id`, `POST /:id/categories`, `PATCH /:id/verification-status` |
-| `/categories` | `GET /`, `POST /` |
+| `/auth` | `POST /register` (needs an `inviteCode`), `POST /login` |
+| `/companies` | `POST /` (returns the first-admin `inviteCode`), `GET /` (search/filter), `GET /:id`, `POST /:id/categories` (add), `PUT /:id/categories` (replace the whole listing), `POST /:id/invites` (company admin), `PATCH /:id/verification-status` |
+| `/categories` | `GET /`, `POST /` (platform admin only) |
 | `/documents` | `POST /`, `GET /?companyId=`, `GET /review-queue`, `PATCH /:id/review` |
 | `/rfqs` | `POST /`, `GET /` (open, filterable), `GET /:id`, `PATCH /:id/status` |
 | `/bids` | `POST /`, `GET /?rfqId=`, `PATCH /:id/status` |
@@ -124,23 +124,29 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 ## Known gaps / next honest steps
 
 - **Auth hardening**: JWT is still in `localStorage` (XSS-readable). Production should move to an httpOnly cookie + refresh-token pair. Route-level guards and ownership checks are now in place (see "Auth & authorization" below) — this remaining item is about the token's storage, not its enforcement.
-- **Open self-registration into any company**: `POST /auth/register` lets anyone attach themselves as a `COMPANY_MEMBER` to *any* existing `companyId`, including one they didn't create — there's no invite/approval step. Found during the auth-guard review; not fixed yet. Before real companies onboard, this needs either an invite-code flow or a "first user becomes admin, everyone after needs admin approval" rule.
+- **Invite management is minimal**: admins can mint a one-time invite (`POST /companies/:id/invites`) but can't list pending ones, revoke one, or remove a user, and there's no way to hand over or add a second `COMPANY_ADMIN`. `PLATFORM_ADMIN` and `VERIFIER` accounts still have to be created by editing the database — there is no bootstrap path for them.
+- **Bidding isn't gated on RFQ state**: `BidsService.create` checks supplier eligibility but not that the RFQ is `OPEN` or still before its `deadline` — the frontend only hides the form (`canBid` in `rfqs/[id]/page.tsx`). Same "enforce it server-side" rule as the verification check; not fixed yet.
 - **Type duplication**: `frontend/lib/types.ts` hand-mirrors `schema.prisma`. Fine at this size; once it drifts twice, generate the frontend types from the Prisma schema instead of hand-syncing.
 - **File upload**: `DocumentUploadForm` takes a pasted link, not a real upload — presigned S3 upload is Phase 2.
 - **No notifications**: RFQs don't yet fan out to matching suppliers (WhatsApp/SMS/email) — flagged in `RfqsService.create`.
-- **RFQ detail is fully public, bids included**: anyone can see every supplier's bid amount on an open RFQ, not just the posting mine. Not addressed in this pass — worth a decision on whether that's actually the desired transparency model or needs restricting.
-- **No frontend UI for category editing**: `attachCategories`/`POST /companies/:id/categories` is fully built and ownership-checked on the backend, but no page calls it yet — a company can't actually edit its own category listing after onboarding without going through the API directly.
+- **RFQ detail is fully public, bids included**: anyone can see every supplier's bid amount on an open RFQ, not just the posting mine — via `GET /rfqs/:id` *and* `GET /bids?rfqId=`, so hiding it in one place isn't enough. Not addressed — worth a decision on whether that's actually the desired transparency model or needs restricting (the usual procurement norm is sealed bids: the posting mine sees all, a supplier sees only their own).
+- **Self-declared categories**: verification is company-level, but a `VERIFIED` supplier can tick any category in the editor and immediately becomes eligible to bid on RFQs in it. Fine while verifiers review the company as a whole; revisit if category-specific evidence (e.g. safety certificates per category) matters.
 
 ## Auth & authorization
 
 - `JwtStrategy` + `JwtAuthGuard` — any route with `@UseGuards(JwtAuthGuard)` requires a valid bearer token; `req.user` is the decoded `{ sub, email, companyId, role }` payload.
 - `JwtOptionalAuthGuard` — decodes the token if present but never rejects; used on `GET /companies/:id` so the directory stays public while owners/verifiers get a fuller view.
 - `RolesGuard` + `@Roles(...)` — restricts a route to specific `UserRole` values. Currently used to lock `PATCH /companies/:id/verification-status` and the document review endpoints to `VERIFIER`/`PLATFORM_ADMIN`.
+- **Joining a company needs a one-time invite code** — `POST /auth/register` no longer takes a `companyId`; the company (and the role) come from the code, so knowing a company's public id gets you nothing.
+  - Creating a company (`POST /companies`) mints the first code, role `COMPANY_ADMIN`, and returns it in that response. That's step 2 of onboarding: the creator registers with it and becomes the company's admin.
+  - A company admin (or `PLATFORM_ADMIN`) mints further codes with `POST /companies/:id/invites` — role `COMPANY_MEMBER`, 7-day expiry, optionally locked to one email address. The frontend shows it as a `/register#invite=…` link on the company profile (fragment, not query string, so it stays out of server logs and `Referer`).
+  - Codes are 192-bit random, stored only as a SHA-256 hash, single-use, and redeemed with a conditional update inside a transaction so two concurrent sign-ups can't both claim one. Every failure mode returns the same message so the endpoint can't be used to probe codes. A duplicate email is a 409 and doesn't burn the code.
 - **Company ID is never trusted from the client on a write.** `POST /rfqs`, `POST /bids`, and `POST /documents` all derive the acting company from the verified JWT (`user.companyId`), not from the request body — see each controller for the same comment explaining why.
 - **Ownership checks, not just login checks**, on the three endpoints that update someone else's resource:
   - `PATCH /rfqs/:id/status` — only the mine that posted the RFQ (or a `PLATFORM_ADMIN`) can change its status.
   - `PATCH /bids/:id/status` — split by transition: only the bidding supplier can set `WITHDRAWN`; every other transition (shortlist/accept/reject) is the RFQ-owning mine's call.
-  - `POST /companies/:id/categories` — only the company itself (or a `PLATFORM_ADMIN`) can edit its own category listing.
+  - `POST /companies/:id/categories` and `PUT /companies/:id/categories` — only the company itself (or a `PLATFORM_ADMIN`) can edit its own category listing. Both validate the body and return 400 for an unknown category id rather than a foreign-key 500. The company profile has a category editor (suppliers only) that saves through the `PUT`.
+  - `POST /categories` — `PLATFORM_ADMIN` only. It was unguarded despite its own comment saying so; anyone who could reach the API could add to the taxonomy suppliers pick from.
 - **Document links are privacy-gated.** `GET /companies/:id` redacts `fileUrl` on every document unless the requester is the owning company or a verifier/admin — found and fixed in the previous pass; previously any anonymous visitor could read a company's raw tax-clearance/CR6 links.
 - Verified with `npm install` + `tsc --noEmit` (backend and frontend) + full `next build` (frontend, all 10 routes) and a full manual trace of every guarded endpoint, including a grep sweep confirming service/controller signatures line up and no client-trusted company-id references remain. **Not yet verified with a live server run** — this sandbox can't download the Prisma query engine binary (`binaries.prisma.sh` isn't reachable here; confirmed there's no alternate legitimate source). Run this once locally to confirm at runtime:
   ```bash
@@ -153,7 +159,13 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
   curl -i -X PATCH http://localhost:3000/rfqs/<id>/status \
     -H "Authorization: Bearer <a token from a DIFFERENT mine>" -H "Content-Type: application/json" \
     -d '{"status":"CLOSED"}'                                          # expect 403 (not the owner)
+  # and for the invite flow:
+  curl -i -X POST http://localhost:3000/auth/register -H "Content-Type: application/json" \
+    -d '{"inviteCode":"<a company id, or anything made up>","email":"x@y.test","password":"password123","fullName":"X"}'
+                                                                       # expect 403 (invalid invite)
   ```
+- **Schema change — run a migration.** This pass adds the `Invite` model: `npx prisma migrate dev --name add-invites` (or `prisma db push` on a throwaway DB). Users registered before it are all `COMPANY_MEMBER`, so no company in an existing dev DB has an admin yet — promote one by hand (`UPDATE "User" SET role = 'COMPANY_ADMIN' WHERE email = '…';`) or re-register.
+- **Verified for the invite + category-editor pass**: backend and frontend `tsc --noEmit`, full `next build`, the invite redemption/authorization/category logic exercised against an in-memory Prisma fake (concurrent redemption, rollback on duplicate email, cross-company invite attempt, replace-set semantics), and the register → category editor → invite-link flow driven in a browser against a stub API. The real NestJS server against real Postgres is still unrun.
 
 ## Working conventions
 

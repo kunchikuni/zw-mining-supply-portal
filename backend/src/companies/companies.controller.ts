@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
+import { CreateInviteDto } from './dto/create-invite.dto';
 import { SearchCompaniesDto } from './dto/search-companies.dto';
+import { SetCategoriesDto } from './dto/set-categories.dto';
 import { VerificationStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtOptionalAuthGuard } from '../auth/jwt-optional-auth.guard';
@@ -15,7 +17,8 @@ export class CompaniesController {
   constructor(private readonly companiesService: CompaniesService) {}
 
   // Deliberately unguarded — this is how onboarding creates a company
-  // before its first user account exists (see /auth/register flow).
+  // before its first user account exists. The response carries the one-time
+  // `inviteCode` that /auth/register requires to become that company's admin.
   @Post()
   create(@Body() dto: CreateCompanyDto) {
     return this.companiesService.create(dto);
@@ -40,9 +43,33 @@ export class CompaniesController {
   attachCategories(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body('categoryIds') categoryIds: string[],
+    @Body() dto: SetCategoriesDto,
   ) {
-    return this.companiesService.attachCategories(id, categoryIds, user);
+    return this.companiesService.attachCategories(id, dto.categoryIds, user);
+  }
+
+  // Replace semantics — the listing becomes exactly `categoryIds`. This is
+  // the endpoint behind the category editor on the company profile.
+  @UseGuards(JwtAuthGuard)
+  @Put(':id/categories')
+  setCategories(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: SetCategoriesDto,
+  ) {
+    return this.companiesService.setCategories(id, dto.categoryIds, user);
+  }
+
+  // Admin-only (enforced in the service, which also allows PLATFORM_ADMIN):
+  // returns a one-time code a teammate redeems at POST /auth/register.
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/invites')
+  createInvite(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateInviteDto,
+  ) {
+    return this.companiesService.createInvite(id, user, dto.email);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

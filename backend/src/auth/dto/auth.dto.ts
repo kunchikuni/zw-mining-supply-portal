@@ -1,8 +1,11 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
+  // Joining a company requires a code issued by that company (or minted when
+  // it was created) — the company is derived from the code, never the client.
   @IsString()
-  companyId: string;
+  @IsNotEmpty()
+  inviteCode: string;
 
   @IsEmail()
   email: string;

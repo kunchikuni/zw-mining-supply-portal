@@ -17,7 +17,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function decodeToken(token: string): AuthUser | null {
+export function decodeToken(token: string): AuthUser | null {
   try {
     const payload = token.split('.')[1];
     return JSON.parse(atob(payload));
