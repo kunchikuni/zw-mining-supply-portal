@@ -160,3 +160,5 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 - No direct pushes to `main` — all work happens on feature branches
 - Database is not touched directly outside of Prisma migrations
 - All changes go through review before merge
+#   z w - m i n i n g - s u p p l y - p o r t a l  
+ 
