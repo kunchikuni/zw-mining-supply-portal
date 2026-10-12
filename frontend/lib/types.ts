@@ -77,6 +77,8 @@ export interface Rfq {
   biddingOpen: boolean;
   createdAt: string;
   bids?: Bid[];
+  // Only on GET /rfqs/mine.
+  _count?: { bids: number };
 }
 
 export interface Bid {

@@ -10,6 +10,16 @@ import { biddingClosesAt, earliestBiddableDeadline, isBiddingOpen } from './bidd
 import { RfqStatus, VerificationStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 
+// Where a mine can take an RFQ by hand. AWARDED is deliberately not a target:
+// it's reached only by accepting a bid (BidsService.setStatus), so an RFQ can
+// never be marked awarded with nobody awarded. AWARDED and CANCELLED are final.
+const RFQ_TRANSITIONS: Record<RfqStatus, RfqStatus[]> = {
+  [RfqStatus.OPEN]: [RfqStatus.CLOSED, RfqStatus.CANCELLED],
+  [RfqStatus.CLOSED]: [RfqStatus.CANCELLED],
+  [RfqStatus.AWARDED]: [],
+  [RfqStatus.CANCELLED]: [],
+};
+
 @Injectable()
 export class RfqsService {
   constructor(private prisma: PrismaService) {}
@@ -69,6 +79,19 @@ export class RfqsService {
     return this.withBiddingState(rfq);
   }
 
+  // Everything the posting company has put out, whatever its status — the
+  // board only lists OPEN RFQs, so without this a closed or awarded RFQ would
+  // have no page that links back to it.
+  async findMine(mineCompanyId: string) {
+    const rfqs = await this.prisma.rfq.findMany({
+      where: { mineCompanyId },
+      include: { category: true, _count: { select: { bids: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const now = new Date();
+    return rfqs.map((rfq) => this.withBiddingState(rfq, now));
+  }
+
   async setStatus(id: string, requester: JwtPayload, status: RfqStatus) {
     const rfq = await this.prisma.rfq.findUnique({ where: { id } });
     if (!rfq) throw new NotFoundException('RFQ not found');
@@ -79,7 +102,23 @@ export class RfqsService {
       throw new ForbiddenException('Only the mine that posted this RFQ can change its status');
     }
 
-    const updated = await this.prisma.rfq.update({ where: { id }, data: { status } });
+    if (!RFQ_TRANSITIONS[rfq.status].includes(status)) {
+      throw new ConflictException(
+        `An RFQ that is ${rfq.status.toLowerCase()} can't be changed to ${status.toLowerCase()}`,
+      );
+    }
+
+    // Conditional on the status we just validated against, so two requests
+    // racing from the same starting state can't both be applied.
+    const { count } = await this.prisma.rfq.updateMany({
+      where: { id, status: rfq.status },
+      data: { status },
+    });
+    if (count !== 1) {
+      throw new ConflictException('This RFQ was just changed — reload and try again');
+    }
+
+    const updated = await this.prisma.rfq.findUniqueOrThrow({ where: { id } });
     return this.withBiddingState(updated);
   }
 
