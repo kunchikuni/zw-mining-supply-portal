@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRfqDto } from './dto/create-rfq.dto';
 import { biddingClosesAt, earliestBiddableDeadline, isBiddingOpen } from './bidding-window';
+import { visibleBidsWhere } from '../bids/bid-visibility';
 import { RfqStatus, VerificationStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 
@@ -66,17 +67,25 @@ export class RfqsService {
     return [...live, ...expired];
   }
 
-  async findOne(id: string) {
+  // Bids are sealed (see bids/bid-visibility.ts): the count is public, but the
+  // bids themselves come back only for the posting mine (all of them) or a
+  // bidder (just its own). Anonymous callers never trigger the bid query.
+  async findOne(id: string, requester?: JwtPayload | null) {
     const rfq = await this.prisma.rfq.findUnique({
       where: { id },
-      include: {
-        mine: true,
-        category: true,
-        bids: { include: { supplier: true } },
-      },
+      include: { mine: true, category: true, _count: { select: { bids: true } } },
     });
     if (!rfq) throw new NotFoundException('RFQ not found');
-    return this.withBiddingState(rfq);
+
+    const where = visibleBidsWhere(rfq, requester);
+    const bids = where
+      ? await this.prisma.bid.findMany({
+          where,
+          include: { supplier: true },
+          orderBy: { submittedAt: 'asc' },
+        })
+      : [];
+    return this.withBiddingState({ ...rfq, bids });
   }
 
   // Everything the posting company has put out, whatever its status — the

@@ -39,9 +39,13 @@ export class RfqsController {
     return this.rfqsService.findMine(user.companyId);
   }
 
+  // Public, but with the optional guard so the server knows who's asking:
+  // bids are sealed, so the posting mine gets every bid, a bidder gets its
+  // own, and everyone else gets only the count (`_count.bids`).
+  @UseGuards(JwtOptionalAuthGuard)
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.rfqsService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload | null) {
+    return this.rfqsService.findOne(id, user);
   }
 
   @UseGuards(JwtAuthGuard)
