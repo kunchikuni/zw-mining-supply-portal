@@ -1,16 +1,43 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { SearchCompaniesDto } from './dto/search-companies.dto';
-import { VerificationStatus, type Document as DocumentModel } from '@prisma/client';
+import { UserRole, VerificationStatus, type Document as DocumentModel } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
+import {
+  BOOTSTRAP_INVITE_TTL_MS,
+  MEMBER_INVITE_TTL_MS,
+  generateInviteCode,
+  hashInviteCode,
+} from '../auth/invite-code';
 
 @Injectable()
 export class CompaniesService {
   constructor(private prisma: PrismaService) {}
 
-  create(dto: CreateCompanyDto) {
-    return this.prisma.company.create({ data: dto });
+  // Creating a company also mints the one-time code that makes its first user
+  // the COMPANY_ADMIN. The plaintext is returned here and never stored — the
+  // creator passes it to POST /auth/register as step 2 of onboarding.
+  async create(dto: CreateCompanyDto) {
+    const inviteCode = generateInviteCode();
+    const company = await this.prisma.company.create({
+      data: {
+        ...dto,
+        invites: {
+          create: {
+            codeHash: hashInviteCode(inviteCode),
+            role: UserRole.COMPANY_ADMIN,
+            expiresAt: new Date(Date.now() + BOOTSTRAP_INVITE_TTL_MS),
+          },
+        },
+      },
+    });
+    return { ...company, inviteCode };
   }
 
   async search(filters: SearchCompaniesDto) {
@@ -54,12 +81,39 @@ export class CompaniesService {
     return company;
   }
 
-  attachCategories(companyId: string, categoryIds: string[], requester: JwtPayload) {
-    const isOwner = requester.companyId === companyId;
-    const isPlatformAdmin = requester.role === 'PLATFORM_ADMIN';
-    if (!isOwner && !isPlatformAdmin) {
-      throw new ForbiddenException('You can only edit your own company\'s categories');
+  // Issues a one-time code for a new teammate. Only an admin of the company
+  // (or a platform admin) can do this — otherwise anyone who can see a
+  // company id in the directory could attach themselves to it.
+  async createInvite(companyId: string, requester: JwtPayload, email?: string) {
+    const isCompanyAdmin =
+      requester.companyId === companyId && requester.role === UserRole.COMPANY_ADMIN;
+    const isPlatformAdmin = requester.role === UserRole.PLATFORM_ADMIN;
+    if (!isCompanyAdmin && !isPlatformAdmin) {
+      throw new ForbiddenException('Only an admin of this company can invite people to it');
     }
+
+    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) throw new NotFoundException('Company not found');
+
+    const inviteCode = generateInviteCode();
+    const expiresAt = new Date(Date.now() + MEMBER_INVITE_TTL_MS);
+    await this.prisma.invite.create({
+      data: {
+        companyId,
+        codeHash: hashInviteCode(inviteCode),
+        role: UserRole.COMPANY_MEMBER,
+        email,
+        createdBy: requester.sub,
+        expiresAt,
+      },
+    });
+    return { inviteCode, expiresAt };
+  }
+
+  // Adds categories to the company's listing without touching the rest.
+  async attachCategories(companyId: string, categoryIds: string[], requester: JwtPayload) {
+    this.assertCanEditCategories(companyId, requester);
+    await this.assertCategoriesExist(categoryIds);
 
     return this.prisma.$transaction(
       categoryIds.map((categoryId) =>
@@ -70,6 +124,44 @@ export class CompaniesService {
         }),
       ),
     );
+  }
+
+  // Makes the company's listing exactly `categoryIds` — adds what's missing,
+  // removes what's no longer listed. This is what the category editor saves.
+  async setCategories(companyId: string, categoryIds: string[], requester: JwtPayload) {
+    this.assertCanEditCategories(companyId, requester);
+    await this.assertCategoriesExist(categoryIds);
+
+    await this.prisma.$transaction([
+      this.prisma.companyCategory.deleteMany({
+        where: { companyId, categoryId: { notIn: categoryIds } },
+      }),
+      this.prisma.companyCategory.createMany({
+        data: categoryIds.map((categoryId) => ({ companyId, categoryId })),
+        skipDuplicates: true,
+      }),
+    ]);
+
+    return this.prisma.companyCategory.findMany({
+      where: { companyId },
+      include: { category: true },
+    });
+  }
+
+  private assertCanEditCategories(companyId: string, requester: JwtPayload) {
+    const isOwner = requester.companyId === companyId;
+    const isPlatformAdmin = requester.role === 'PLATFORM_ADMIN';
+    if (!isOwner && !isPlatformAdmin) {
+      throw new ForbiddenException('You can only edit your own company\'s categories');
+    }
+  }
+
+  // Without this an unknown id surfaces as an opaque foreign-key 500.
+  private async assertCategoriesExist(categoryIds: string[]) {
+    const found = await this.prisma.category.count({ where: { id: { in: categoryIds } } });
+    if (found !== new Set(categoryIds).size) {
+      throw new BadRequestException('One or more categories do not exist');
+    }
   }
 
   // A company is only search-visible/tender-eligible once a verifier has

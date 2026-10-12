@@ -7,6 +7,8 @@ import type { Company } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { VerificationBadge } from '@/components/VerificationBadge';
 import { Badge } from '@/components/Badge';
+import { CategoryEditor } from '@/components/CategoryEditor';
+import { InviteForm } from '@/components/InviteForm';
 import { DocumentList } from '@/components/DocumentList';
 import { DocumentUploadForm } from '@/components/DocumentUploadForm';
 import { CardSkeleton } from '@/components/LoadingSkeleton';
@@ -73,7 +75,18 @@ export default function CompanyProfilePage() {
         </div>
       </div>
 
+      {isOwner && company.type === 'SUPPLIER' && (
+        <CategoryEditor
+          companyId={company.id}
+          currentCategoryIds={(company.categories ?? []).map((c) => c.categoryId)}
+          onSaved={load}
+        />
+      )}
+
       {isOwner && <DocumentUploadForm onUploaded={load} />}
+
+      {/* Admin-only in the UI as a convenience; POST /companies/:id/invites enforces it. */}
+      {isOwner && user?.role === 'COMPANY_ADMIN' && <InviteForm companyId={company.id} />}
     </div>
   );
 }

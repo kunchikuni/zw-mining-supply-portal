@@ -2,7 +2,9 @@ import type {
   Bid,
   Category,
   Company,
+  CompanyCategory,
   CompanyType,
+  CreatedCompany,
   DocumentRecord,
   DocumentType,
   LocalContentSummary,
@@ -57,8 +59,10 @@ export function login(email: string, password: string) {
   });
 }
 
+// `inviteCode` is what ties the new user to a company: the one returned by
+// createCompany for a company's first admin, or one issued by createInvite.
 export function registerUser(data: {
-  companyId: string;
+  inviteCode: string;
   email: string;
   password: string;
   fullName: string;
@@ -79,7 +83,7 @@ export function createCompany(data: {
   isLocallyOwned?: boolean;
   description?: string;
 }) {
-  return request<Company>('/companies', { method: 'POST', body: JSON.stringify(data) });
+  return request<CreatedCompany>('/companies', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export function searchCompanies(filters: {
@@ -105,6 +109,25 @@ export function attachCategories(companyId: string, categoryIds: string[], token
   return request(`/companies/${companyId}/categories`, {
     method: 'POST',
     body: JSON.stringify({ categoryIds }),
+    token,
+  });
+}
+
+// Replaces the company's whole category listing with exactly `categoryIds`.
+export function setCompanyCategories(companyId: string, categoryIds: string[], token: string) {
+  return request<CompanyCategory[]>(`/companies/${companyId}/categories`, {
+    method: 'PUT',
+    body: JSON.stringify({ categoryIds }),
+    token,
+  });
+}
+
+// Company admins only. The returned code is shown once and never retrievable
+// again — the backend keeps only its hash.
+export function createInvite(companyId: string, token: string, email?: string) {
+  return request<{ inviteCode: string; expiresAt: string }>(`/companies/${companyId}/invites`, {
+    method: 'POST',
+    body: JSON.stringify(email ? { email } : {}),
     token,
   });
 }

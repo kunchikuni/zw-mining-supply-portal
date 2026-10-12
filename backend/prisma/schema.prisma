@@ -76,6 +76,7 @@ model Company {
   updatedAt           DateTime            @updatedAt
 
   users               User[]
+  invites             Invite[]
   documents           Document[]
   categories          CompanyCategory[]
   postedRfqs          Rfq[]               @relation("MineRfqs")
@@ -97,6 +98,24 @@ model User {
   role         UserRole  @default(COMPANY_MEMBER)
   phone        String?
   createdAt    DateTime  @default(now())
+
+  @@index([companyId])
+}
+
+// One-time code that lets a person join an existing company. Company creation
+// mints the first one (role COMPANY_ADMIN); that admin invites everyone after.
+// Only the SHA-256 of the code is stored, so a DB read can't redeem one.
+model Invite {
+  id        String    @id @default(uuid())
+  companyId String
+  company   Company   @relation(fields: [companyId], references: [id])
+  codeHash  String    @unique
+  role      UserRole  @default(COMPANY_MEMBER)
+  email     String?   // when set, only this address may redeem the code
+  createdBy String?   // inviting user's id; null for the bootstrap invite
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([companyId])
 }

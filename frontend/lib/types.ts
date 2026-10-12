@@ -44,6 +44,12 @@ export interface Company {
   documents?: DocumentRecord[];
 }
 
+// What POST /companies returns: the company plus the one-time code that
+// makes its first user the company admin (see registerUser).
+export interface CreatedCompany extends Company {
+  inviteCode: string;
+}
+
 export interface DocumentRecord {
   id: string;
   companyId: string;
