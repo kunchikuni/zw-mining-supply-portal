@@ -150,13 +150,18 @@ export function registerDocument(
 }
 
 // ---- RFQs ----
-export function getOpenRfqs(filters: { categoryId?: string; province?: string } = {}) {
+// The token is optional: anonymous visitors get the public board, and a
+// signed-in mine additionally gets its own RFQs back after their deadline.
+export function getOpenRfqs(
+  filters: { categoryId?: string; province?: string } = {},
+  token?: string | null,
+) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
     if (value) params.set(key, value);
   });
   const qs = params.toString();
-  return request<Rfq[]>(`/rfqs${qs ? `?${qs}` : ''}`);
+  return request<Rfq[]>(`/rfqs${qs ? `?${qs}` : ''}`, { token });
 }
 
 export function getRfq(id: string) {

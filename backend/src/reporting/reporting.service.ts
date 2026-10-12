@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BidStatus, Prisma, RfqStatus } from '@prisma/client';
+import { earliestBiddableDeadline } from '../rfqs/bidding-window';
 
 // Matches the `include` clause on the acceptedBids query below — kept as a
 // named type so it doesn't collapse to implicit `any` if Prisma client
@@ -68,7 +69,16 @@ export class ReportingService {
         // at MVP scale; add an `awardedAt` column if this needs to be precise.
         orderBy: { submittedAt: 'desc' },
       }),
-      this.prisma.rfq.count({ where: { mineCompanyId, status: RfqStatus.OPEN } }),
+      // "Currently accepting bids": OPEN *and* still inside the bidding
+      // window. An RFQ past its deadline stays OPEN until the mine acts on
+      // it, so status alone would overcount.
+      this.prisma.rfq.count({
+        where: {
+          mineCompanyId,
+          status: RfqStatus.OPEN,
+          deadline: { gte: earliestBiddableDeadline(new Date()) },
+        },
+      }),
     ]);
 
     let totalAwardedValue = 0;

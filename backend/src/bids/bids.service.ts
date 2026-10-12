@@ -13,6 +13,17 @@ export class BidsService {
   ) {}
 
   async create(supplierCompanyId: string, dto: CreateBidDto) {
+    // State before eligibility, so an unknown RFQ is a 404 rather than the
+    // misleading "not eligible" 403 it used to surface as.
+    const rfq = await this.rfqsService.assertOpenForBidding(dto.rfqId);
+
+    // A mine can't bid on its own request — that would let it manufacture
+    // competing quotes on an RFQ it also gets to shortlist and award. The
+    // frontend hides the form for this case; this is the enforcement.
+    if (rfq.mineCompanyId === supplierCompanyId) {
+      throw new ForbiddenException('A company cannot bid on its own RFQ');
+    }
+
     const eligible = await this.rfqsService.supplierIsEligible(dto.rfqId, supplierCompanyId);
     if (!eligible) {
       throw new ForbiddenException(
