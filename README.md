@@ -62,9 +62,10 @@ zw-supplier-portal/
     │   │   ├── page.tsx         # directory search
     │   │   └── [id]/page.tsx    # company profile
     │   └── rfqs/
-    │       ├── page.tsx         # RFQ board
+    │       ├── page.tsx         # RFQ board (biddable RFQs only)
     │       ├── new/page.tsx     # mine posts an RFQ
-    │       └── [id]/page.tsx    # RFQ detail + bid form
+    │       ├── mine/page.tsx    # every RFQ the caller's company posted, any status
+    │       └── [id]/page.tsx    # RFQ detail + bid form (suppliers) / manage + review bids (owner)
     ├── components/              # Navbar, CompanyCard, RfqCard, BidForm,
     │                             # BidList, DocumentUploadForm, DocumentList,
     │                             # SearchFilters, Badge, Button, EmptyState, etc.
@@ -86,8 +87,8 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 | `/companies` | `POST /` (returns the first-admin `inviteCode`), `GET /` (search/filter), `GET /:id`, `POST /:id/categories` (add), `PUT /:id/categories` (replace the whole listing), `POST /:id/invites` (company admin), `PATCH /:id/verification-status` |
 | `/categories` | `GET /`, `POST /` (platform admin only) |
 | `/documents` | `POST /`, `GET /?companyId=`, `GET /review-queue`, `PATCH /:id/review` |
-| `/rfqs` | `POST /`, `GET /` (still-biddable, filterable; optional auth also returns the caller's own expired RFQs), `GET /:id`, `PATCH /:id/status` |
-| `/bids` | `POST /`, `GET /?rfqId=`, `PATCH /:id/status` |
+| `/rfqs` | `POST /`, `GET /` (still-biddable, filterable; optional auth also returns the caller's own expired RFQs), `GET /mine` (all of the caller's RFQs, any status), `GET /:id`, `PATCH /:id/status` (owner: close or cancel) |
+| `/bids` | `POST /`, `GET /?rfqId=`, `PATCH /:id/status` (owner: shortlist/accept/reject; bidder: withdraw — accept also awards the RFQ) |
 | `/ratings` | `POST /`, `GET /company/:id/average` |
 | `/reporting` | `GET /local-content?mineCompanyId=` — the compliance dashboard's data source |
 
@@ -125,7 +126,9 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 
 - **Auth hardening**: JWT is still in `localStorage` (XSS-readable). Production should move to an httpOnly cookie + refresh-token pair. Route-level guards and ownership checks are now in place (see "Auth & authorization" below) — this remaining item is about the token's storage, not its enforcement.
 - **Invite management is minimal**: admins can mint a one-time invite (`POST /companies/:id/invites`) but can't list pending ones, revoke one, or remove a user, and there's no way to hand over or add a second `COMPANY_ADMIN`. `PLATFORM_ADMIN` and `VERIFIER` accounts still have to be created by editing the database — there is no bootstrap path for them.
-- **RFQs never close themselves, and mines can't act on them in the UI**: bidding stops at the deadline and expired RFQs are hidden from the public board (see "Auth & authorization"), but an expired RFQ stays `OPEN` until its mine changes it — and there's no UI to do that. `PATCH /rfqs/:id/status` and `PATCH /bids/:id/status` are built and ownership-checked, but no page calls them, so a mine can't close, award, shortlist or accept anything from the portal. There's also no "my RFQs" page: the board is a mine's only way back to its own RFQ, which is why `GET /rfqs` keeps showing a mine its own expired ones.
+- **Review decisions are final and silent**: accepting or rejecting a bid and cancelling an RFQ can't be undone (the server enforces it — accepted bids are what the local-content dashboard totals), a closed RFQ can't be reopened, and nobody is told. A supplier only finds out their bid was accepted or rejected by going back to the RFQ page, and there's no "my bids" view to find it from. The push side is the notifications gap below; undo/reopen is a product decision about how much the dashboard numbers should be allowed to move.
+- **A deadline doesn't close an RFQ**: bidding stops at the deadline and the RFQ drops off the public board, but its status stays `OPEN` until the mine closes, cancels or awards it. That's deliberate (no scheduler, and the status is the mine's call), but it means `status` alone never tells you whether an RFQ is biddable — read `biddingOpen`.
+- **Redundant board special case**: `GET /rfqs` still returns a mine its own expired RFQs (flagged `biddingOpen: false`) from before "My RFQs" existed. It's harmless but no longer needed; removing it would let the board drop its optional-auth guard and the frontend's token-dependent refetch.
 - **Type duplication**: `frontend/lib/types.ts` hand-mirrors `schema.prisma`. Fine at this size; once it drifts twice, generate the frontend types from the Prisma schema instead of hand-syncing.
 - **File upload**: `DocumentUploadForm` takes a pasted link, not a real upload — presigned S3 upload is Phase 2.
 - **No notifications**: RFQs don't yet fan out to matching suppliers (WhatsApp/SMS/email) — flagged in `RfqsService.create`.
@@ -146,8 +149,10 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
   - A company also can't bid on its own RFQ (403) — otherwise a mine that is itself `VERIFIED` and lists the category could manufacture competing quotes on a request it also shortlists and awards.
 - **Company ID is never trusted from the client on a write.** `POST /rfqs`, `POST /bids`, and `POST /documents` all derive the acting company from the verified JWT (`user.companyId`), not from the request body — see each controller for the same comment explaining why.
 - **Ownership checks, not just login checks**, on the three endpoints that update someone else's resource:
-  - `PATCH /rfqs/:id/status` — only the mine that posted the RFQ (or a `PLATFORM_ADMIN`) can change its status.
-  - `PATCH /bids/:id/status` — split by transition: only the bidding supplier can set `WITHDRAWN`; every other transition (shortlist/accept/reject) is the RFQ-owning mine's call.
+  - `PATCH /rfqs/:id/status` — only the mine that posted the RFQ (or a `PLATFORM_ADMIN`) can change its status, and only along `OPEN → CLOSED | CANCELLED` or `CLOSED → CANCELLED`. `AWARDED` is not settable here: it's reached only by accepting a bid, so an RFQ can't be marked awarded with nobody awarded. `AWARDED` and `CANCELLED` are final.
+  - `PATCH /bids/:id/status` — split by transition: only the bidding supplier can set `WITHDRAWN`; every other transition (shortlist/accept/reject) is the RFQ-owning mine's call. Allowed moves are `SUBMITTED → SHORTLISTED | ACCEPTED | REJECTED | WITHDRAWN` and `SHORTLISTED → ACCEPTED | REJECTED | WITHDRAWN`; `ACCEPTED`, `REJECTED` and `WITHDRAWN` are final. Nothing but a withdrawal can happen on a `CANCELLED` RFQ.
+  - **Accepting a bid awards its RFQ**, in one transaction (an `OPEN` or `CLOSED` RFQ becomes `AWARDED`). It's "an accepted bid", not "the accepted bid": a split award accepts several, and the RFQ simply stays `AWARDED`. Both status endpoints use conditional updates, so two reviewers acting at once get a 409 for the loser instead of silently overwriting each other, and both validate the body (400 for an unknown status).
+  - The mine UI (`/rfqs/[id]` for the owner, plus `/rfqs/mine`) offers exactly these moves — close, cancel, shortlist, accept (confirmed), reject (confirmed) — and nothing else. `GET /rfqs/mine` lists every RFQ the caller's company has posted, in any status, because the board only shows biddable ones.
   - `POST /companies/:id/categories` and `PUT /companies/:id/categories` — only the company itself (or a `PLATFORM_ADMIN`) can edit its own category listing. Both validate the body and return 400 for an unknown category id rather than a foreign-key 500. The company profile has a category editor (suppliers only) that saves through the `PUT`.
   - `POST /categories` — `PLATFORM_ADMIN` only. It was unguarded despite its own comment saying so; anyone who could reach the API could add to the taxonomy suppliers pick from.
 - **Document links are privacy-gated.** `GET /companies/:id` redacts `fileUrl` on every document unless the requester is the owning company or a verifier/admin — found and fixed in the previous pass; previously any anonymous visitor could read a company's raw tax-clearance/CR6 links.

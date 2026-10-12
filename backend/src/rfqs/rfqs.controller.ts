@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { RfqsService } from './rfqs.service';
 import { CreateRfqDto } from './dto/create-rfq.dto';
-import { RfqStatus } from '@prisma/client';
+import { SetRfqStatusDto } from './dto/set-rfq-status.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtOptionalAuthGuard } from '../auth/jwt-optional-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -31,6 +31,14 @@ export class RfqsController {
     return this.rfqsService.findOpen(categoryId, province, user?.companyId);
   }
 
+  // Every RFQ the caller's company has posted, in any status. Declared before
+  // `:id` so "mine" isn't captured as an RFQ id.
+  @UseGuards(JwtAuthGuard)
+  @Get('mine')
+  findMine(@CurrentUser() user: JwtPayload) {
+    return this.rfqsService.findMine(user.companyId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.rfqsService.findOne(id);
@@ -41,8 +49,8 @@ export class RfqsController {
   setStatus(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body('status') status: RfqStatus,
+    @Body() dto: SetRfqStatusDto,
   ) {
-    return this.rfqsService.setStatus(id, user, status);
+    return this.rfqsService.setStatus(id, user, dto.status);
   }
 }

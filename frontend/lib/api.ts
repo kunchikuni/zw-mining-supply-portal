@@ -1,5 +1,6 @@
 import type {
   Bid,
+  BidStatus,
   Category,
   Company,
   CompanyCategory,
@@ -9,6 +10,7 @@ import type {
   DocumentType,
   LocalContentSummary,
   Rfq,
+  RfqStatus,
   VerificationStatus,
 } from './types';
 
@@ -168,6 +170,21 @@ export function getRfq(id: string) {
   return request<Rfq>(`/rfqs/${id}`);
 }
 
+// Everything the signed-in company has posted, in any status.
+export function getMyRfqs(token: string) {
+  return request<Rfq[]>('/rfqs/mine', { token });
+}
+
+// Only the posting mine can do this, and only OPEN -> CLOSED | CANCELLED or
+// CLOSED -> CANCELLED. An RFQ becomes AWARDED by accepting a bid, not here.
+export function setRfqStatus(id: string, status: RfqStatus, token: string) {
+  return request<Rfq>(`/rfqs/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+    token,
+  });
+}
+
 export function createRfq(
   token: string,
   data: {
@@ -198,6 +215,15 @@ export function createBid(
 
 export function getBidsForRfq(rfqId: string) {
   return request<Bid[]>(`/bids?rfqId=${rfqId}`);
+}
+
+// Accepting a bid also marks its RFQ AWARDED, in the same transaction.
+export function setBidStatus(id: string, status: BidStatus, token: string) {
+  return request<Bid>(`/bids/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+    token,
+  });
 }
 
 // ---- Reporting ----

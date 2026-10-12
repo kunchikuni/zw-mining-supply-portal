@@ -1,9 +1,30 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RfqsService } from '../rfqs/rfqs.service';
 import { CreateBidDto } from './dto/create-bid.dto';
-import { BidStatus } from '@prisma/client';
+import { BidStatus, RfqStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
+
+// A bid is reviewed once: shortlisting is the only step that can be followed
+// by another. ACCEPTED is final because accepted bids are what the local
+// content dashboard totals — they shouldn't be re-openable after the fact.
+const BID_TRANSITIONS: Record<BidStatus, BidStatus[]> = {
+  [BidStatus.SUBMITTED]: [
+    BidStatus.SHORTLISTED,
+    BidStatus.ACCEPTED,
+    BidStatus.REJECTED,
+    BidStatus.WITHDRAWN,
+  ],
+  [BidStatus.SHORTLISTED]: [BidStatus.ACCEPTED, BidStatus.REJECTED, BidStatus.WITHDRAWN],
+  [BidStatus.ACCEPTED]: [],
+  [BidStatus.REJECTED]: [],
+  [BidStatus.WITHDRAWN]: [],
+};
 
 @Injectable()
 export class BidsService {
@@ -63,6 +84,41 @@ export class BidsService {
       );
     }
 
-    return this.prisma.bid.update({ where: { id }, data: { status } });
+    if (!BID_TRANSITIONS[bid.status].includes(status)) {
+      throw new ConflictException(
+        `A bid that is ${bid.status.toLowerCase()} can't be changed to ${status.toLowerCase()}`,
+      );
+    }
+
+    // A cancelled RFQ is dead, so there's nothing left to review. A supplier
+    // can still withdraw their own bid from it.
+    if (status !== BidStatus.WITHDRAWN && bid.rfq.status === RfqStatus.CANCELLED) {
+      throw new ConflictException('This RFQ was cancelled, so its bids can no longer be reviewed');
+    }
+
+    // One transaction so a bid can't end up ACCEPTED on an RFQ that still
+    // reads OPEN. The bid update is conditional on the status validated
+    // above, so two reviewers clicking at once can't both win.
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.bid.updateMany({
+        where: { id, status: bid.status },
+        data: { status },
+      });
+      if (count !== 1) {
+        throw new ConflictException('This bid was just changed — reload and try again');
+      }
+
+      // Accepting a bid awards the RFQ. It's deliberately not "the only
+      // accepted bid": a split award accepts several, and the RFQ simply
+      // stays AWARDED. OPEN and CLOSED are the only states that move.
+      if (status === BidStatus.ACCEPTED) {
+        await tx.rfq.updateMany({
+          where: { id: bid.rfqId, status: { in: [RfqStatus.OPEN, RfqStatus.CLOSED] } },
+          data: { status: RfqStatus.AWARDED },
+        });
+      }
+
+      return tx.bid.findUniqueOrThrow({ where: { id } });
+    });
   }
 }

@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { RfqStatusBadge } from '@/components/RfqStatusBadge';
 import { BidList } from '@/components/BidList';
 import { BidForm } from '@/components/BidForm';
+import { RfqOwnerPanel } from '@/components/RfqOwnerPanel';
 import { CardSkeleton } from '@/components/LoadingSkeleton';
 import { ErrorBanner } from '@/components/ErrorBanner';
 
@@ -27,6 +28,15 @@ export default function RfqDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Re-fetch after the owner closes the RFQ or reviews a bid. Unlike `load`
+  // it doesn't swap the page for a skeleton, so the controls the owner just
+  // used don't flash away and take any error message with them.
+  const refresh = useCallback(() => {
+    getRfq(id)
+      .then(setRfq)
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not reload this RFQ.'));
+  }, [id]);
+
   useEffect(() => {
     load();
   }, [load]);
@@ -35,12 +45,14 @@ export default function RfqDetailPage() {
   if (error) return <ErrorBanner message={error} />;
   if (!rfq) return null;
 
+  const isOwner = Boolean(user) && user?.companyId === rfq.mineCompanyId;
+
   // Eligibility (verified + category match), the RFQ being open, and the bidder
   // not being the posting mine are all enforced server-side by BidsService;
   // this is just a UX nicety so the wrong audience doesn't see a form they'd be
   // rejected from submitting. `biddingOpen` comes from the API (status OPEN and
   // inside the deadline window) so the deadline rule lives in one place.
-  const canBid = Boolean(user) && user?.companyId !== rfq.mineCompanyId && rfq.biddingOpen;
+  const canBid = Boolean(user) && !isOwner && rfq.biddingOpen;
 
   return (
     <div className="space-y-6">
@@ -70,10 +82,15 @@ export default function RfqDetailPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <h2 className="mb-2 text-sm font-medium text-ink">Bids ({rfq.bids?.length ?? 0})</h2>
-          <BidList bids={rfq.bids ?? []} />
+          <BidList
+            bids={rfq.bids ?? []}
+            reviewable={isOwner && rfq.status !== 'CANCELLED'}
+            onChanged={refresh}
+          />
         </div>
-        <div>
-          {!rfq.biddingOpen && (
+        <div className="space-y-4">
+          {isOwner && <RfqOwnerPanel rfq={rfq} onChanged={refresh} />}
+          {!isOwner && !rfq.biddingOpen && (
             <p
               role="status"
               className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600"
