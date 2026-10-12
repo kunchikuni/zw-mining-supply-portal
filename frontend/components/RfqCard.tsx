@@ -19,14 +19,18 @@ export function RfqCard({ rfq }: { rfq: Rfq }) {
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-medium text-ink">{rfq.title}</h3>
-        <RfqStatusBadge status={rfq.status} />
+        <RfqStatusBadge status={rfq.status} biddingOpen={rfq.biddingOpen} />
       </div>
       <p className="mt-1 text-sm text-gray-500">
         {rfq.mine?.name ?? 'Mining company'}
         {rfq.category ? ` · ${rfq.category.name}` : ''}
         {rfq.province ? ` · ${rfq.province}` : ''}
       </p>
-      <p className="mt-3 text-xs font-medium text-copper-600">{formatDeadline(rfq.deadline)}</p>
+      {rfq.biddingOpen ? (
+        <p className="mt-3 text-xs font-medium text-copper-600">{formatDeadline(rfq.deadline)}</p>
+      ) : (
+        <p className="mt-3 text-xs font-medium text-gray-500">Deadline passed</p>
+      )}
     </Link>
   );
 }

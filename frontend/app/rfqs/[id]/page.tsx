@@ -35,17 +35,19 @@ export default function RfqDetailPage() {
   if (error) return <ErrorBanner message={error} />;
   if (!rfq) return null;
 
-  // Eligibility (verified + category match) is enforced server-side by BidsService;
+  // Eligibility (verified + category match), the RFQ being open, and the bidder
+  // not being the posting mine are all enforced server-side by BidsService;
   // this is just a UX nicety so the wrong audience doesn't see a form they'd be
-  // rejected from submitting.
-  const canBid = Boolean(user) && user?.companyId !== rfq.mineCompanyId && rfq.status === 'OPEN';
+  // rejected from submitting. `biddingOpen` comes from the API (status OPEN and
+  // inside the deadline window) so the deadline rule lives in one place.
+  const canBid = Boolean(user) && user?.companyId !== rfq.mineCompanyId && rfq.biddingOpen;
 
   return (
     <div className="space-y-6">
       <div>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-semibold text-ink">{rfq.title}</h1>
-          <RfqStatusBadge status={rfq.status} />
+          <RfqStatusBadge status={rfq.status} biddingOpen={rfq.biddingOpen} />
         </div>
         <p className="mt-1 text-sm text-gray-500">
           {rfq.mine?.name ?? 'Mining company'}
@@ -71,6 +73,16 @@ export default function RfqDetailPage() {
           <BidList bids={rfq.bids ?? []} />
         </div>
         <div>
+          {!rfq.biddingOpen && (
+            <p
+              role="status"
+              className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600"
+            >
+              {rfq.status === 'OPEN'
+                ? 'The bidding deadline has passed — this RFQ is no longer accepting bids.'
+                : 'This RFQ is no longer accepting bids.'}
+            </p>
+          )}
           {canBid && <BidForm rfqId={rfq.id} onSubmitted={load} />}
         </div>
       </div>

@@ -8,7 +8,19 @@ const CONFIG: Record<RfqStatus, { label: string; tone: 'neutral' | 'copper' | 'c
   CANCELLED: { label: 'Cancelled', tone: 'danger' },
 };
 
-export function RfqStatusBadge({ status }: { status: RfqStatus }) {
+// `biddingOpen` matters only for status OPEN: an RFQ past its deadline keeps
+// that status until its mine acts, and a green "Open" badge on it would say
+// the opposite of what the bid form can do.
+export function RfqStatusBadge({
+  status,
+  biddingOpen = true,
+}: {
+  status: RfqStatus;
+  biddingOpen?: boolean;
+}) {
+  if (status === 'OPEN' && !biddingOpen) {
+    return <Badge tone="neutral">Bidding closed</Badge>;
+  }
   const { label, tone } = CONFIG[status];
   return <Badge tone={tone}>{label}</Badge>;
 }

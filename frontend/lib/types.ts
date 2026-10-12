@@ -71,6 +71,10 @@ export interface Rfq {
   province?: string | null;
   deadline: string;
   status: RfqStatus;
+  // Derived by the API: OPEN *and* still inside its bidding window. An RFQ
+  // past its deadline stays status OPEN until its mine acts, so `status`
+  // alone doesn't say whether a bid will be accepted.
+  biddingOpen: boolean;
   createdAt: string;
   bids?: Bid[];
 }

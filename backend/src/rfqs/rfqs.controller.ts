@@ -3,6 +3,7 @@ import { RfqsService } from './rfqs.service';
 import { CreateRfqDto } from './dto/create-rfq.dto';
 import { RfqStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtOptionalAuthGuard } from '../auth/jwt-optional-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { JwtPayload } from '../auth/jwt.strategy';
 
@@ -18,9 +19,16 @@ export class RfqsController {
     return this.rfqsService.create(user.companyId, dto);
   }
 
+  // Public, but with the optional guard so the posting mine still sees its
+  // own RFQs after their deadline (see RfqsService.findOpen).
+  @UseGuards(JwtOptionalAuthGuard)
   @Get()
-  findOpen(@Query('categoryId') categoryId?: string, @Query('province') province?: string) {
-    return this.rfqsService.findOpen(categoryId, province);
+  findOpen(
+    @CurrentUser() user: JwtPayload | null,
+    @Query('categoryId') categoryId?: string,
+    @Query('province') province?: string,
+  ) {
+    return this.rfqsService.findOpen(categoryId, province, user?.companyId);
   }
 
   @Get(':id')
