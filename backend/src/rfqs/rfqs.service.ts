@@ -70,6 +70,10 @@ export class RfqsService {
     if (now >= biddingClosesAt(rfq.deadline)) {
       throw new ConflictException('The bidding deadline for this RFQ has passed');
     }
+
+    // Returned so callers can make further checks against the RFQ without
+    // loading it a second time.
+    return rfq;
   }
 
   // Only suppliers whose verificationStatus is VERIFIED and who list this
