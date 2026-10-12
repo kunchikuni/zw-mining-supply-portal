@@ -25,6 +25,9 @@ export function Navbar() {
               <Link href="/dashboard" className="text-gray-600 hover:text-ink">
                 Dashboard
               </Link>
+              <Link href="/bids/mine" className="text-gray-600 hover:text-ink">
+                My bids
+              </Link>
               <Link href="/rfqs/mine" className="text-gray-600 hover:text-ink">
                 My RFQs
               </Link>
