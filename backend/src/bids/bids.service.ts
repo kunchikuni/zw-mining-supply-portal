@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RfqsService } from '../rfqs/rfqs.service';
 import { CreateBidDto } from './dto/create-bid.dto';
 import { isBiddingOpen } from '../rfqs/bidding-window';
+import { visibleBidsWhere } from './bid-visibility';
 import { BidStatus, RfqStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 
@@ -55,9 +56,19 @@ export class BidsService {
     return this.prisma.bid.create({ data: { ...dto, supplierCompanyId } });
   }
 
-  findByRfq(rfqId: string) {
+  // Same sealed-bid rule as GET /rfqs/:id: the posting mine sees every bid,
+  // anyone else only their own.
+  async findByRfq(rfqId: string, requester: JwtPayload) {
+    const rfq = await this.prisma.rfq.findUnique({
+      where: { id: rfqId },
+      select: { id: true, mineCompanyId: true },
+    });
+    if (!rfq) throw new NotFoundException('RFQ not found');
+
+    const where = visibleBidsWhere(rfq, requester);
+    if (!where) return [];
     return this.prisma.bid.findMany({
-      where: { rfqId },
+      where,
       include: { supplier: true },
       orderBy: { submittedAt: 'asc' },
     });

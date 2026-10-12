@@ -89,10 +89,10 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 | `/companies` | `POST /` (returns the first-admin `inviteCode`), `GET /` (search/filter), `GET /:id`, `POST /:id/categories` (add), `PUT /:id/categories` (replace the whole listing), `POST /:id/invites` (company admin), `PATCH /:id/verification-status` |
 | `/categories` | `GET /`, `POST /` (platform admin only) |
 | `/documents` | `POST /`, `GET /?companyId=`, `GET /review-queue`, `PATCH /:id/review` |
-| `/rfqs` | `POST /`, `GET /` (still-biddable, filterable; optional auth also returns the caller's own expired RFQs), `GET /mine` (all of the caller's RFQs, any status), `GET /:id`, `PATCH /:id/status` (owner: close or cancel) |
-| `/bids` | `POST /`, `GET /?rfqId=`, `GET /mine` (the caller's bids across every RFQ, each with its RFQ), `PATCH /:id/status` (owner: shortlist/accept/reject; bidder: withdraw — accept also awards the RFQ) |
+| `/rfqs` | `POST /`, `GET /` (still-biddable, filterable; optional auth also returns the caller's own expired RFQs), `GET /mine` (all of the caller's RFQs, any status), `GET /:id` (bids sealed: everyone gets the count, only the posting mine gets every bid, a bidder gets its own), `PATCH /:id/status` (owner: close or cancel) |
+| `/bids` | `POST /`, `GET /?rfqId=` (sign-in and `rfqId` required; same sealed rule), `GET /mine` (the caller's bids across every RFQ, each with its RFQ), `PATCH /:id/status` (owner: shortlist/accept/reject; bidder: withdraw — accept also awards the RFQ) |
 | `/ratings` | `POST /`, `GET /company/:id/average` |
-| `/reporting` | `GET /local-content?mineCompanyId=` — the compliance dashboard's data source |
+| `/reporting` | `GET /local-content` — the compliance dashboard's data source, always for the caller's own company (taken from the token; there is no `mineCompanyId` parameter) |
 
 ## 5. UI architecture
 
@@ -135,7 +135,8 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 - **Type duplication**: `frontend/lib/types.ts` hand-mirrors `schema.prisma`. Fine at this size; once it drifts twice, generate the frontend types from the Prisma schema instead of hand-syncing.
 - **File upload**: `DocumentUploadForm` takes a pasted link, not a real upload — presigned S3 upload is Phase 2.
 - **No notifications**: RFQs don't yet fan out to matching suppliers (WhatsApp/SMS/email) — flagged in `RfqsService.create`.
-- **RFQ detail is fully public, bids included**: anyone can see every supplier's bid amount on an open RFQ, not just the posting mine — via `GET /rfqs/:id` *and* `GET /bids?rfqId=`, so hiding it in one place isn't enough. Worse, `GET /bids` with no `rfqId` almost certainly lists *every* bid on the platform (Prisma drops an `undefined` filter), supplier details included. Not addressed — worth a decision on whether that's actually the desired transparency model or needs restricting (the usual procurement norm is sealed bids: the posting mine sees all, a supplier sees only their own).
+- **Bids stay sealed forever**: there's no post-award disclosure — once an RFQ is awarded, other bidders still can't see who won or at what price. Public-procurement practice often publishes the award; whether this portal should is a product call, and `bids/bid-visibility.ts` is the one place to add it.
+- **A supplier can bid more than once on the same RFQ**: `BidsService.create` doesn't check for an existing live bid, and the schema has no unique `(rfqId, supplierCompanyId)`. With sealed bids that reads like "revise my quote", but the mine sees every copy and there's no edit or "replace my bid". Decide whether to block a second bid, or turn it into an explicit revision.
 - **Self-declared categories**: verification is company-level, but a `VERIFIED` supplier can tick any category in the editor and immediately becomes eligible to bid on RFQs in it. Fine while verifiers review the company as a whole; revisit if category-specific evidence (e.g. safety certificates per category) matters.
 
 ## Auth & authorization
@@ -158,6 +159,10 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
   - The mine UI (`/rfqs/[id]` for the owner, plus `/rfqs/mine`) offers exactly these moves — close, cancel, shortlist, accept (confirmed), reject (confirmed) — and nothing else. `GET /rfqs/mine` lists every RFQ the caller's company has posted, in any status, because the board only shows biddable ones.
   - `POST /companies/:id/categories` and `PUT /companies/:id/categories` — only the company itself (or a `PLATFORM_ADMIN`) can edit its own category listing. Both validate the body and return 400 for an unknown category id rather than a foreign-key 500. The company profile has a category editor (suppliers only) that saves through the `PUT`.
   - `POST /categories` — `PLATFORM_ADMIN` only. It was unguarded despite its own comment saying so; anyone who could reach the API could add to the taxonomy suppliers pick from.
+- **Bids are sealed.** The mine that posted an RFQ (or a `PLATFORM_ADMIN`) sees every bid on it; any other signed-in company sees only its own bids; anonymous visitors see none. Everyone sees the total count. One function, `bids/bid-visibility.ts`, defines this, and both endpoints that return bids on an RFQ go through it:
+  - `GET /rfqs/:id` is still public, with the optional guard so the server knows who's asking. It always returns `_count.bids`, and `bids` per the rule above; an anonymous request never runs the bid query at all.
+  - `GET /bids?rfqId=` now requires sign-in and a non-empty `rfqId` (400 otherwise). Before, it was public and — called with no `rfqId` — listed every bid on the platform.
+  - The RFQ page shows non-owners a "N bids submitted · bids are sealed" summary plus their own bid(s), and the full reviewable list only to the owner. Because the stored token loads after the first render, the page fetches twice; only the latest response may update it, so a slow anonymous response can't replace the owner's view with the sealed one.
 - **Document links are privacy-gated.** `GET /companies/:id` redacts `fileUrl` on every document unless the requester is the owning company or a verifier/admin — found and fixed in the previous pass; previously any anonymous visitor could read a company's raw tax-clearance/CR6 links.
 - Verified with `npm install` + `tsc --noEmit` (backend and frontend) + full `next build` (frontend, all 10 routes) and a full manual trace of every guarded endpoint, including a grep sweep confirming service/controller signatures line up and no client-trusted company-id references remain. **Not yet verified with a live server run** — this sandbox can't download the Prisma query engine binary (`binaries.prisma.sh` isn't reachable here; confirmed there's no alternate legitimate source). Run this once locally to confirm at runtime:
   ```bash

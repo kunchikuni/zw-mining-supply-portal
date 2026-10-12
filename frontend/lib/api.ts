@@ -166,8 +166,11 @@ export function getOpenRfqs(
   return request<Rfq[]>(`/rfqs${qs ? `?${qs}` : ''}`, { token });
 }
 
-export function getRfq(id: string) {
-  return request<Rfq>(`/rfqs/${id}`);
+// Bids are sealed, so the token matters here: the posting mine gets every
+// bid, a bidder gets its own, and anyone else (or no token) gets only
+// `_count.bids`.
+export function getRfq(id: string, token?: string | null) {
+  return request<Rfq>(`/rfqs/${id}`, { token });
 }
 
 // Everything the signed-in company has posted, in any status.
@@ -213,8 +216,9 @@ export function createBid(
   return request<Bid>('/bids', { method: 'POST', body: JSON.stringify(data), token });
 }
 
-export function getBidsForRfq(rfqId: string) {
-  return request<Bid[]>(`/bids?rfqId=${rfqId}`);
+// Requires sign-in; returns only the bids the caller may see on that RFQ.
+export function getBidsForRfq(rfqId: string, token: string) {
+  return request<Bid[]>(`/bids?rfqId=${encodeURIComponent(rfqId)}`, { token });
 }
 
 // Every bid the signed-in company has placed, newest first, each with the

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { BidsService } from './bids.service';
 import { CreateBidDto } from './dto/create-bid.dto';
+import { FindBidsQueryDto } from './dto/find-bids-query.dto';
 import { SetBidStatusDto } from './dto/set-bid-status.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -26,9 +27,13 @@ export class BidsController {
     return this.bidsService.findMine(user.companyId);
   }
 
+  // Sealed: sign-in required, and only the bids the caller may see come back
+  // (all of them for the posting mine, otherwise the caller's own). `rfqId`
+  // is required — without it this used to list every bid on the platform.
+  @UseGuards(JwtAuthGuard)
   @Get()
-  findByRfq(@Query('rfqId') rfqId: string) {
-    return this.bidsService.findByRfq(rfqId);
+  findByRfq(@CurrentUser() user: JwtPayload, @Query() query: FindBidsQueryDto) {
+    return this.bidsService.findByRfq(query.rfqId, user);
   }
 
   @UseGuards(JwtAuthGuard)

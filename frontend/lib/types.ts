@@ -76,8 +76,10 @@ export interface Rfq {
   // alone doesn't say whether a bid will be accepted.
   biddingOpen: boolean;
   createdAt: string;
+  // Sealed: on GET /rfqs/:id this is every bid for the posting mine, only the
+  // caller's own for a bidder, and empty for anyone else.
   bids?: Bid[];
-  // Only on GET /rfqs/mine.
+  // Total bids on the RFQ, visible to everyone. On GET /rfqs/:id and /rfqs/mine.
   _count?: { bids: number };
 }
 
