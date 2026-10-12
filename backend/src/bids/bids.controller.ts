@@ -18,6 +18,14 @@ export class BidsController {
     return this.bidsService.create(user.companyId, dto);
   }
 
+  // The caller's own bids across every RFQ. The company comes from the token,
+  // never a query param, so one supplier can't list another's bids this way.
+  @UseGuards(JwtAuthGuard)
+  @Get('mine')
+  findMine(@CurrentUser() user: JwtPayload) {
+    return this.bidsService.findMine(user.companyId);
+  }
+
   @Get()
   findByRfq(@Query('rfqId') rfqId: string) {
     return this.bidsService.findByRfq(rfqId);

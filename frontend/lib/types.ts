@@ -86,6 +86,9 @@ export interface Bid {
   rfqId: string;
   supplierCompanyId: string;
   supplier?: Company;
+  // Only on GET /bids/mine: the RFQ this bid was placed on, with `mine`,
+  // `category` and `biddingOpen` filled in.
+  rfq?: Rfq;
   amount: string;
   currency: string;
   leadTimeDays?: number | null;

@@ -217,6 +217,12 @@ export function getBidsForRfq(rfqId: string) {
   return request<Bid[]>(`/bids?rfqId=${rfqId}`);
 }
 
+// Every bid the signed-in company has placed, newest first, each with the
+// RFQ it was placed on.
+export function getMyBids(token: string) {
+  return request<Bid[]>('/bids/mine', { token });
+}
+
 // Accepting a bid also marks its RFQ AWARDED, in the same transaction.
 export function setBidStatus(id: string, status: BidStatus, token: string) {
   return request<Bid>(`/bids/${id}/status`, {

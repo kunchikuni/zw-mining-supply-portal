@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RfqsService } from '../rfqs/rfqs.service';
 import { CreateBidDto } from './dto/create-bid.dto';
+import { isBiddingOpen } from '../rfqs/bidding-window';
 import { BidStatus, RfqStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 
@@ -60,6 +61,23 @@ export class BidsService {
       include: { supplier: true },
       orderBy: { submittedAt: 'asc' },
     });
+  }
+
+  // Every bid the caller's company has placed, with enough of the RFQ to show
+  // where it stands. `biddingOpen` comes from the same rule the board and the
+  // bid check use, so the supplier sees "bidding closed" exactly when a new
+  // bid would be refused.
+  async findMine(supplierCompanyId: string) {
+    const bids = await this.prisma.bid.findMany({
+      where: { supplierCompanyId },
+      include: { rfq: { include: { mine: true, category: true } } },
+      orderBy: { submittedAt: 'desc' },
+    });
+    const now = new Date();
+    return bids.map((bid) => ({
+      ...bid,
+      rfq: { ...bid.rfq, biddingOpen: isBiddingOpen(bid.rfq, now) },
+    }));
   }
 
   async setStatus(id: string, requester: JwtPayload, status: BidStatus) {
