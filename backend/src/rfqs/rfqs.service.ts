@@ -1,6 +1,12 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRfqDto } from './dto/create-rfq.dto';
+import { biddingClosesAt } from './bidding-window';
 import { RfqStatus, VerificationStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 
@@ -49,6 +55,21 @@ export class RfqsService {
     }
 
     return this.prisma.rfq.update({ where: { id }, data: { status } });
+  }
+
+  // A bid is only meaningful while the RFQ is OPEN and its deadline hasn't
+  // passed. The UI hides the form otherwise, but that's a convenience — this
+  // is the enforcement, same as the eligibility check below.
+  async assertOpenForBidding(rfqId: string, now: Date = new Date()) {
+    const rfq = await this.prisma.rfq.findUnique({ where: { id: rfqId } });
+    if (!rfq) throw new NotFoundException('RFQ not found');
+
+    if (rfq.status !== RfqStatus.OPEN) {
+      throw new ConflictException('This RFQ is no longer accepting bids');
+    }
+    if (now >= biddingClosesAt(rfq.deadline)) {
+      throw new ConflictException('The bidding deadline for this RFQ has passed');
+    }
   }
 
   // Only suppliers whose verificationStatus is VERIFIED and who list this

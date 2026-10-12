@@ -13,6 +13,10 @@ export class BidsService {
   ) {}
 
   async create(supplierCompanyId: string, dto: CreateBidDto) {
+    // State before eligibility, so an unknown RFQ is a 404 rather than the
+    // misleading "not eligible" 403 it used to surface as.
+    await this.rfqsService.assertOpenForBidding(dto.rfqId);
+
     const eligible = await this.rfqsService.supplierIsEligible(dto.rfqId, supplierCompanyId);
     if (!eligible) {
       throw new ForbiddenException(
