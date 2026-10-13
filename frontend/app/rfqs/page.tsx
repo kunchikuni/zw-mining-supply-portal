@@ -8,6 +8,7 @@ import { RfqCard } from '@/components/RfqCard';
 import { CardSkeletonGrid } from '@/components/LoadingSkeleton';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function RfqsPage() {
   const { token } = useAuth();
@@ -48,26 +49,27 @@ export default function RfqsPage() {
   }, [categoryId, token]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">Open RFQs</h1>
-          <p className="mt-1 text-sm text-gray-500">What mines are currently sourcing.</p>
-        </div>
-        <select
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-          aria-label="Filter by category"
-        >
-          <option value="">All categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="RFQ board"
+        title="Open RFQs"
+        description="What mines are currently sourcing, soonest deadline first."
+        actions={
+          <select
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            className="input w-auto min-w-[15rem]"
+            aria-label="Filter by category"
+          >
+            <option value="">All categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        }
+      />
 
       {error && <ErrorBanner message={error} />}
 
@@ -76,7 +78,7 @@ export default function RfqsPage() {
       ) : rfqs.length === 0 ? (
         <EmptyState title="No open RFQs right now" description="Check back soon, or adjust the category filter." />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {rfqs.map((rfq) => (
             <RfqCard key={rfq.id} rfq={rfq} />
           ))}

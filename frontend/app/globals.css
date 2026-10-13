@@ -2,12 +2,85 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #F6F5F1;
-  color: #1B211F;
+@layer base {
+  body {
+    @apply bg-paper text-ink;
+  }
+
+  :focus-visible {
+    outline: 2px solid theme('colors.copper.500');
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: theme('colors.copper.100');
+  }
+
+  /* The display serif defaults to old-style numerals ("0" sits at x-height,
+     so "0%" reads like "o%"). Lining figures keep KPIs, "01 / 02 / 03" and
+     numbers in titles at full height. */
+  [class*='font-display'],
+  .page-title,
+  .card-title {
+    font-variant-numeric: lining-nums;
+  }
 }
 
-:focus-visible {
-  outline: 2px solid #96601F;
-  outline-offset: 2px;
+/* Shared building blocks. Pages use these instead of repeating long class
+   strings, so the whole app keeps one look: serif display headings, small
+   uppercase labels, hairline-bordered white cards on an ivory page. */
+@layer components {
+  .page-title {
+    @apply font-display text-4xl font-semibold leading-[1.1] tracking-tight text-ink sm:text-[2.75rem];
+  }
+
+  .page-lead {
+    @apply mt-3 max-w-2xl text-[15px] leading-relaxed text-gray-600;
+  }
+
+  /* Small uppercase kicker with a short gold rule in front of it. */
+  .eyebrow {
+    @apply inline-flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-copper-600;
+  }
+  .eyebrow::before {
+    content: '';
+    @apply h-px w-8 bg-copper-500;
+  }
+
+  .section-title {
+    @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-ink;
+  }
+
+  .card-title {
+    @apply font-display text-xl font-semibold leading-snug text-ink;
+  }
+
+  .card {
+    @apply rounded-lg border border-gray-200/80 bg-white shadow-soft;
+  }
+
+  .card-link {
+    @apply block rounded-lg border border-gray-200/80 bg-white shadow-soft transition duration-200 hover:-translate-y-0.5 hover:border-copper-200 hover:shadow-lift;
+  }
+
+  /* A card that holds a form or a set of controls. */
+  .panel {
+    @apply rounded-lg border border-gray-200/80 bg-white p-5 shadow-soft sm:p-6;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-ink shadow-sm transition placeholder:text-gray-400 focus:border-copper-400 focus:outline-none focus:ring-2 focus:ring-copper-400/25 disabled:bg-gray-50 disabled:text-gray-400;
+  }
+
+  .hint {
+    @apply mt-1.5 text-xs leading-relaxed text-gray-400;
+  }
+
+  .text-link {
+    @apply font-medium text-copper-600 underline-offset-4 transition hover:text-copper-700 hover:underline;
+  }
 }

@@ -30,7 +30,7 @@ A local-supplier directory and RFQ platform connecting Zimbabwean mining compani
 - NestJS over raw Express: the module/DI structure keeps `companies`, `rfqs`, `bids` etc. as separable units — matters once more than one engineer touches this.
 - Prisma over a raw query builder: schema-as-code plus generated types remove a whole class of "column renamed, forgot to update the query" bugs.
 - Next.js over CRA/Vite: gives you SSR/SEO for the public directory later (mines/suppliers should be Google-indexable) without a framework migration.
-- Tailwind: fast to build consistent UI with a small team; the custom `copper`/`chrome` palette in `tailwind.config.ts` ties status colors to something visually related to mining rather than generic blue/green.
+- Tailwind: fast to build consistent UI with a small team; the warm ivory / gold / muted-green palette in `tailwind.config.ts` reads as considered and industry-appropriate rather than generic SaaS blue, and ties status colours to consistent meanings (see "UI architecture").
 
 ## 2. File structure
 
@@ -100,10 +100,14 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 - **State**: no global store — `AuthProvider` (React Context) is the only cross-page state, holding the JWT and the decoded user. Everything else is local `useState` per page; there's no shared server-cache layer yet (no React Query/SWR). That's a deliberate MVP tradeoff — fine at this scale, worth adding once there are enough pages re-fetching the same data to matter.
 - **Data flow**: page mounts → calls a typed function from `lib/api.ts` → renders loading skeleton → success or `ErrorBanner`. Every list view has a loading, empty, and error state — see `CompaniesPage` and `RfqsPage` for the pattern.
 - **Component layering**:
-  - **Primitives**: `Button`, `Badge`, `EmptyState`, `ErrorBanner`, `LoadingSkeleton` — no domain knowledge, reusable anywhere.
+  - **Layout**: `Navbar` (sticky, translucent, with a mobile menu and active-link state), `Footer`, `PageHeader` (eyebrow + serif title + lead + actions — the top of every page), `BrandMark`.
+  - **Primitives**: `Button` / `ButtonLink`, `Badge`, `EmptyState`, `ErrorBanner`, `LoadingSkeleton` — no domain knowledge, reusable anywhere. Use `ButtonLink` for a link styled as a button; never put a `<Button>` inside a `<Link>` (invalid HTML, and it reads as two controls to screen readers).
   - **Domain display**: `CompanyCard`, `RfqCard`, `VerificationBadge`, `RfqStatusBadge`, `BidList`, `DocumentList` — know about the data shape, render-only.
   - **Domain forms**: `SearchFilters`, `BidForm`, `DocumentUploadForm` — own their local state and call the API client directly.
-- **Design tokens**: `copper` (accent / pending-state) and `chrome` (verified / success-state) in `tailwind.config.ts` — chosen to read as "mining industry" rather than generic SaaS blue, and reused consistently across every status badge so color carries real meaning site-wide.
+- **Visual language**: warm and quiet — an ivory page (`paper`), white hairline-bordered cards with soft shadows, a muted gold accent, and generous spacing. Headings use **Cormorant Garamond** (serif, with lining numerals so figures stay full height); everything else uses **DM Sans**. Both are loaded with `next/font`, so they're self-hosted at build time.
+- **Design tokens** (`tailwind.config.ts`): `copper` is the gold accent (primary buttons, links, focus, "pending" states); `chrome` is a muted green for verified / success / local content; `sand` is the deeper cream for the footer and hero panels; `gray` is overridden with Tailwind's warm `stone` scale, so every neutral sits naturally on the ivory background. Colour carries the same meaning in every badge site-wide.
+- **Shared classes** (`app/globals.css`): `page-title`, `page-lead`, `eyebrow` (small caps with a gold rule), `section-title`, `card-title`, `card`, `card-link`, `panel`, `label`, `input`, `hint`, `text-link`. Pages use these rather than repeating long class strings, which is what keeps the look consistent — change one, and every page follows.
+- **Formatting**: amounts go through `formatMoney` ("$12,500") and dates through `formatDate` ("27 Oct 2026" — day first with a month name, so it can't be misread whatever the browser locale) in `lib/format.ts`.
 - **Accessibility**: every form input has an associated `<label>`; buttons carry `aria-busy` while loading; focus-visible outline is set globally in `globals.css`.
 
 ## 6. Getting started

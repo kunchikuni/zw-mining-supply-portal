@@ -5,26 +5,21 @@ import { Badge } from './Badge';
 
 export function CompanyCard({ company }: { company: Company }) {
   return (
-    <Link
-      href={`/companies/${company.id}`}
-      className="block rounded-lg border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-medium text-ink">{company.name}</h3>
+    <Link href={`/companies/${company.id}`} className="card-link p-6">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="card-title">{company.name}</h3>
         <VerificationBadge status={company.verificationStatus} />
       </div>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1.5 text-sm text-gray-500">
         {company.type === 'MINE' ? 'Mining company' : 'Supplier'}
         {company.province ? ` · ${company.province}` : ''}
       </p>
       {company.categories && company.categories.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-5 flex flex-wrap gap-1.5">
           {company.categories.slice(0, 3).map((c) => (
             <Badge key={c.categoryId}>{c.category.name}</Badge>
           ))}
-          {company.categories.length > 3 && (
-            <Badge>+{company.categories.length - 3} more</Badge>
-          )}
+          {company.categories.length > 3 && <Badge>+{company.categories.length - 3} more</Badge>}
         </div>
       )}
     </Link>

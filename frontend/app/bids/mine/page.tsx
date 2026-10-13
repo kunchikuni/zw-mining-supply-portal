@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { getMyBids, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Bid } from '@/lib/types';
@@ -9,7 +8,8 @@ import { MyBidRow } from '@/components/MyBidRow';
 import { CardSkeletonGrid } from '@/components/LoadingSkeleton';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { Button } from '@/components/Button';
+import { ButtonLink } from '@/components/Button';
+import { PageHeader } from '@/components/PageHeader';
 
 // A supplier's way back to what they've bid on and what became of it — the
 // RFQ board only shows RFQs that are still open, so an accepted, rejected or
@@ -57,9 +57,9 @@ export default function MyBidsPage() {
         title="Sign in to see your bids"
         description="This page lists the bids your company has submitted and where each one stands."
         action={
-          <Link href="/login">
-            <Button size="sm">Sign in</Button>
-          </Link>
+          <ButtonLink href="/login" size="sm">
+            Sign in
+          </ButtonLink>
         }
       />
     );
@@ -73,22 +73,21 @@ export default function MyBidsPage() {
   const accepted = bids.filter((b) => b.status === 'ACCEPTED').length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">My bids</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {bids.length === 0
-              ? 'Every bid your company has submitted, and where it stands.'
-              : `${bids.length} bid${bids.length === 1 ? '' : 's'} · ${awaiting} awaiting a decision · ${accepted} accepted`}
-          </p>
-        </div>
-        <Link href="/rfqs">
-          <Button size="sm" variant="secondary">
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="For suppliers"
+        title="My bids"
+        description={
+          bids.length === 0
+            ? 'Every bid your company has submitted, and where it stands.'
+            : `${bids.length} bid${bids.length === 1 ? '' : 's'} · ${awaiting} awaiting a decision · ${accepted} accepted`
+        }
+        actions={
+          <ButtonLink href="/rfqs" variant="secondary">
             Browse open RFQs
-          </Button>
-        </Link>
-      </div>
+          </ButtonLink>
+        }
+      />
 
       {error && <ErrorBanner message={error} />}
 
@@ -100,7 +99,7 @@ export default function MyBidsPage() {
           description="Verified suppliers can bid on open RFQs in the categories they're listed under."
         />
       ) : (
-        <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
+        <ul className="card divide-y divide-gray-100">
           {bids.map((bid) => (
             <MyBidRow key={bid.id} bid={bid} onChanged={refresh} />
           ))}

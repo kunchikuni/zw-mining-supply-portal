@@ -15,21 +15,19 @@ export function SealedBidSummary({
   mineName?: string;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
-        <p className="font-medium text-ink">
+    <div className="space-y-6">
+      <div className="panel">
+        <p className="font-display text-2xl font-semibold text-ink">
           {bidCount === 0 ? 'No bids yet' : `${bidCount} bid${bidCount === 1 ? '' : 's'} submitted`}
         </p>
-        <p className="mt-1">
+        <p className="mt-2 text-sm leading-relaxed text-gray-500">
           Bids are sealed: only {mineName ?? 'the mine that posted this RFQ'} can see who bid and for
           how much.
         </p>
       </div>
       {ownBids.length > 0 && (
         <div>
-          <h3 className="mb-2 text-sm font-medium text-ink">
-            Your bid{ownBids.length === 1 ? '' : 's'}
-          </h3>
+          <h3 className="mb-4 section-title">Your bid{ownBids.length === 1 ? '' : 's'}</h3>
           <BidList bids={ownBids} />
         </div>
       )}

@@ -9,7 +9,9 @@ import { RfqStatusBadge } from '@/components/RfqStatusBadge';
 import { CardSkeletonGrid } from '@/components/LoadingSkeleton';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { Button } from '@/components/Button';
+import { ButtonLink } from '@/components/Button';
+import { PageHeader } from '@/components/PageHeader';
+import { formatDate } from '@/lib/format';
 
 // The board only lists RFQs that are still open for bids, so a closed,
 // awarded or cancelled RFQ has nowhere else to be reached from. This is that
@@ -49,27 +51,22 @@ export default function MyRfqsPage() {
         title="Sign in to see your RFQs"
         description="This page lists the requests for quote your company has posted."
         action={
-          <Link href="/login">
-            <Button size="sm">Sign in</Button>
-          </Link>
+          <ButtonLink href="/login" size="sm">
+            Sign in
+          </ButtonLink>
         }
       />
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">My RFQs</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Everything your company has posted — open, closed, awarded or cancelled.
-          </p>
-        </div>
-        <Link href="/rfqs/new">
-          <Button size="sm">Post an RFQ</Button>
-        </Link>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="For mines"
+        title="My RFQs"
+        description="Everything your company has posted — open, closed, awarded or cancelled."
+        actions={<ButtonLink href="/rfqs/new">Post an RFQ</ButtonLink>}
+      />
 
       {error && <ErrorBanner message={error} />}
 
@@ -81,21 +78,21 @@ export default function MyRfqsPage() {
           description="Post one and verified suppliers in that category can bid on it."
         />
       ) : (
-        <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
+        <ul className="card divide-y divide-gray-100">
           {rfqs.map((rfq) => {
             const bidCount = rfq._count?.bids ?? 0;
             return (
               <li key={rfq.id}>
                 <Link
                   href={`/rfqs/${rfq.id}`}
-                  className="flex flex-wrap items-center justify-between gap-3 p-4 hover:bg-gray-50"
+                  className="flex flex-wrap items-center justify-between gap-4 px-5 py-5 transition hover:bg-sand-50/70 sm:px-6"
                 >
                   <div>
-                    <p className="font-medium text-ink">{rfq.title}</p>
-                    <p className="text-sm text-gray-500">
+                    <p className="card-title">{rfq.title}</p>
+                    <p className="mt-1 text-sm text-gray-500">
                       {rfq.category?.name ?? 'Uncategorised'} · {bidCount} bid
                       {bidCount === 1 ? '' : 's'} · deadline{' '}
-                      {new Date(rfq.deadline).toLocaleDateString()}
+                      {formatDate(rfq.deadline)}
                     </p>
                   </div>
                   <RfqStatusBadge status={rfq.status} biddingOpen={rfq.biddingOpen} />

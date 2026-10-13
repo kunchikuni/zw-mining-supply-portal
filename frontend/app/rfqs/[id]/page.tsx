@@ -12,6 +12,8 @@ import { RfqOwnerPanel } from '@/components/RfqOwnerPanel';
 import { SealedBidSummary } from '@/components/SealedBidSummary';
 import { CardSkeleton } from '@/components/LoadingSkeleton';
 import { ErrorBanner } from '@/components/ErrorBanner';
+import { PageHeader } from '@/components/PageHeader';
+import { formatDate } from '@/lib/format';
 
 export default function RfqDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -83,33 +85,46 @@ export default function RfqDetailPage() {
   const canBid = Boolean(user) && !isOwner && rfq.biddingOpen;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold text-ink">{rfq.title}</h1>
-          <RfqStatusBadge status={rfq.status} biddingOpen={rfq.biddingOpen} />
+    <div className="space-y-10">
+      <PageHeader
+        eyebrow={rfq.category?.name ?? 'Request for quote'}
+        title={rfq.title}
+        actions={<RfqStatusBadge status={rfq.status} biddingOpen={rfq.biddingOpen} />}
+      />
+
+      <dl className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <dt className="label">Posted by</dt>
+          <dd className="text-sm font-medium text-ink">{rfq.mine?.name ?? 'Mining company'}</dd>
         </div>
-        <p className="mt-1 text-sm text-gray-500">
-          {rfq.mine?.name ?? 'Mining company'}
-          {rfq.category ? ` · ${rfq.category.name}` : ''}
-          {rfq.province ? ` · ${rfq.province}` : ''}
-        </p>
-        <p className="mt-1 text-sm text-gray-500">
-          Bid deadline: {new Date(rfq.deadline).toLocaleDateString()}
+        <div>
+          <dt className="label">Bid deadline</dt>
+          <dd className="text-sm font-medium text-ink">{formatDate(rfq.deadline)}</dd>
+        </div>
+        {rfq.province && (
+          <div>
+            <dt className="label">Province</dt>
+            <dd className="text-sm font-medium text-ink">{rfq.province}</dd>
+          </div>
+        )}
+        {rfq.quantity && (
+          <div>
+            <dt className="label">Quantity</dt>
+            <dd className="text-sm font-medium text-ink">{rfq.quantity}</dd>
+          </div>
+        )}
+      </dl>
+
+      <div className="max-w-3xl">
+        <h2 className="section-title">Scope</h2>
+        <p className="mt-3 whitespace-pre-line text-[15px] leading-relaxed text-gray-700">
+          {rfq.description}
         </p>
       </div>
 
-      <p className="text-sm text-gray-700">{rfq.description}</p>
-      {rfq.quantity && (
-        <p className="text-sm text-gray-700">
-          <span className="font-medium">Quantity: </span>
-          {rfq.quantity}
-        </p>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <h2 className="mb-2 text-sm font-medium text-ink">Bids ({bidCount})</h2>
+          <h2 className="mb-4 section-title">Bids ({bidCount})</h2>
           {seesAllBids ? (
             <BidList
               bids={rfq.bids ?? []}
@@ -120,12 +135,12 @@ export default function RfqDetailPage() {
             <SealedBidSummary bidCount={bidCount} ownBids={rfq.bids ?? []} mineName={rfq.mine?.name} />
           )}
         </div>
-        <div className="space-y-4">
+        <div className="space-y-6">
           {isOwner && <RfqOwnerPanel rfq={rfq} onChanged={refresh} />}
           {!isOwner && !rfq.biddingOpen && (
             <p
               role="status"
-              className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600"
+              className="panel text-sm leading-relaxed text-gray-600"
             >
               {rfq.status === 'OPEN'
                 ? 'The bidding deadline has passed — this RFQ is no longer accepting bids.'

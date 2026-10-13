@@ -50,21 +50,21 @@ export function DocumentUploadForm({ onUploaded }: { onUploaded: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-gray-200 p-4">
-      <h3 className="font-medium text-ink">Add a compliance document</h3>
+    <form onSubmit={handleSubmit} className="panel space-y-4">
+      <h3 className="card-title">Add a compliance document</h3>
       <p className="text-xs text-gray-500">
         A verifier reviews every document before it counts toward your verification status.
       </p>
       {error && <ErrorBanner message={error} />}
       <div>
-        <label htmlFor="docType" className="mb-1 block text-xs font-medium text-gray-600">
+        <label htmlFor="docType" className="label">
           Document type
         </label>
         <select
           id="docType"
           value={docType}
           onChange={(e) => setDocType(e.target.value as DocumentType)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="input"
         >
           {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
             <option key={value} value={value}>
@@ -74,7 +74,7 @@ export function DocumentUploadForm({ onUploaded }: { onUploaded: () => void }) {
         </select>
       </div>
       <div>
-        <label htmlFor="fileUrl" className="mb-1 block text-xs font-medium text-gray-600">
+        <label htmlFor="fileUrl" className="label">
           Link to document
         </label>
         <input
@@ -83,10 +83,10 @@ export function DocumentUploadForm({ onUploaded }: { onUploaded: () => void }) {
           value={fileUrl}
           onChange={(e) => setFileUrl(e.target.value)}
           placeholder="https://..."
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="input"
           required
         />
-        <p className="mt-1 text-xs text-gray-400">
+        <p className="hint">
           Direct file upload is coming in Phase 2 — for now, link a Google Drive/Dropbox file set to
           &quot;anyone with the link can view&quot;.
         </p>

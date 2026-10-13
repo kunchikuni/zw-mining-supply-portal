@@ -25,11 +25,11 @@ export function DocumentList({ documents }: { documents: DocumentRecord[] }) {
   }
 
   return (
-    <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
+    <ul className="card divide-y divide-gray-100">
       {documents.map((doc) => (
-        <li key={doc.id} className="flex items-center justify-between gap-3 p-4">
-          <span className="text-sm text-ink">{DOC_TYPE_LABELS[doc.docType]}</span>
-          <Badge tone={STATUS_TONE[doc.status]}>{doc.status.toLowerCase()}</Badge>
+        <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+          <span className="text-sm font-medium text-ink">{DOC_TYPE_LABELS[doc.docType]}</span>
+          <Badge tone={STATUS_TONE[doc.status]}>{doc.status.charAt(0) + doc.status.slice(1).toLowerCase()}</Badge>
         </li>
       ))}
     </ul>

@@ -35,22 +35,22 @@ export function CategoryBreakdownChart({ data }: { data: CategoryBreakdown[] }) 
       <div className="h-[280px] w-full" role="img" aria-label="Awarded spend by category, split between local and non-local suppliers">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16 }}>
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E7E5E4" />
             <XAxis
               type="number"
               tickFormatter={(v) => formatCurrency(v)}
-              tick={{ fontSize: 12, fill: '#6B7280' }}
+              tick={{ fontSize: 12, fill: '#78716C' }}
             />
             <YAxis
               type="category"
               dataKey="name"
               width={140}
-              tick={{ fontSize: 12, fill: '#1B211F' }}
+              tick={{ fontSize: 12, fill: '#1A1814' }}
             />
             <Tooltip formatter={(v: number) => formatCurrency(v)} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="Local" stackId="a" fill="#237A5F" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="Non-local" stackId="a" fill="#D1D5DB" radius={[0, 4, 4, 0]} />
+            <Bar dataKey="Local" stackId="a" fill="#3F7D58" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="Non-local" stackId="a" fill="#E4D8C2" radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

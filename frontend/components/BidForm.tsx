@@ -53,11 +53,11 @@ export function BidForm({ rfqId, onSubmitted }: { rfqId: string; onSubmitted: ()
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-gray-200 p-4">
-      <h3 className="font-medium text-ink">Submit a bid</h3>
+    <form onSubmit={handleSubmit} className="panel space-y-4">
+      <h3 className="card-title">Submit a bid</h3>
       {error && <ErrorBanner message={error} />}
       <div>
-        <label htmlFor="amount" className="mb-1 block text-xs font-medium text-gray-600">
+        <label htmlFor="amount" className="label">
           Amount (USD)
         </label>
         <input
@@ -67,12 +67,12 @@ export function BidForm({ rfqId, onSubmitted }: { rfqId: string; onSubmitted: ()
           step="0.01"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="input"
           required
         />
       </div>
       <div>
-        <label htmlFor="leadTimeDays" className="mb-1 block text-xs font-medium text-gray-600">
+        <label htmlFor="leadTimeDays" className="label">
           Lead time (days)
         </label>
         <input
@@ -81,11 +81,11 @@ export function BidForm({ rfqId, onSubmitted }: { rfqId: string; onSubmitted: ()
           min="0"
           value={leadTimeDays}
           onChange={(e) => setLeadTimeDays(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="input"
         />
       </div>
       <div>
-        <label htmlFor="notes" className="mb-1 block text-xs font-medium text-gray-600">
+        <label htmlFor="notes" className="label">
           Notes (optional)
         </label>
         <textarea
@@ -93,7 +93,7 @@ export function BidForm({ rfqId, onSubmitted }: { rfqId: string; onSubmitted: ()
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="input"
         />
       </div>
       <Button type="submit" loading={loading} className="w-full">
