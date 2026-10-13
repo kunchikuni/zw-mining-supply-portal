@@ -9,6 +9,7 @@ import { BidStatusBadge } from './BidStatusBadge';
 import { ConfirmAction } from './ConfirmAction';
 import { ErrorBanner } from './ErrorBanner';
 import { RfqStatusBadge } from './RfqStatusBadge';
+import { formatMoney, formatDate } from '@/lib/format';
 
 function isActive(bid: Bid) {
   return bid.status === 'SUBMITTED' || bid.status === 'SHORTLISTED';
@@ -59,10 +60,10 @@ export function MyBidRow({ bid, onChanged }: { bid: Bid; onChanged: () => void }
   }
 
   return (
-    <li className="p-4">
+    <li className="px-5 py-5 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Link href={`/rfqs/${bid.rfqId}`} className="font-medium text-ink hover:underline">
+          <Link href={`/rfqs/${bid.rfqId}`} className="card-title transition hover:text-copper-700">
             {rfq?.title ?? 'RFQ'}
           </Link>
           <p className="text-sm text-gray-500">
@@ -70,10 +71,10 @@ export function MyBidRow({ bid, onChanged }: { bid: Bid; onChanged: () => void }
             {rfq?.category ? ` · ${rfq.category.name}` : ''}
           </p>
           <p className="mt-1 text-sm text-gray-700">
-            {bid.currency} {bid.amount}
+            {formatMoney(bid.amount, bid.currency)}
             {bid.leadTimeDays ? ` · ${bid.leadTimeDays} day lead time` : ''}
             {' · submitted '}
-            {new Date(bid.submittedAt).toLocaleDateString()}
+            {formatDate(bid.submittedAt)}
           </p>
           <p className="mt-1 text-xs text-gray-500">{describe(bid)}</p>
         </div>

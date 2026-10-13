@@ -89,21 +89,23 @@ function RegisterForm() {
   }
 
   return (
-    <div className="mx-auto max-w-sm">
-      <h1 className="text-xl font-semibold text-ink">
-        {step === 1
-          ? 'Tell us about your company'
-          : joining
-            ? 'Join your company'
-            : 'Create your account'}
-      </h1>
-      {!joining && <p className="mt-1 text-sm text-gray-500">Step {step} of 2</p>}
+    <div className="mx-auto max-w-md">
+      <div className="text-center">
+        <p className="eyebrow">{joining ? 'You\'ve been invited' : `Step ${step} of 2`}</p>
+        <h1 className="page-title mt-4">
+          {step === 1
+            ? 'Tell us about your company'
+            : joining
+              ? 'Join your company'
+              : 'Create your account'}
+        </h1>
+      </div>
 
       {step === 1 ? (
-        <form onSubmit={handleCompanySubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleCompanySubmit} className="panel mt-8 space-y-5">
           {error && <ErrorBanner message={error} />}
           <div>
-            <label htmlFor="name" className="mb-1 block text-xs font-medium text-gray-600">
+            <label htmlFor="name" className="label">
               Company name
             </label>
             <input
@@ -111,32 +113,32 @@ function RegisterForm() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="input"
             />
           </div>
           <div>
-            <label htmlFor="type" className="mb-1 block text-xs font-medium text-gray-600">
+            <label htmlFor="type" className="label">
               We are a
             </label>
             <select
               id="type"
               value={type}
               onChange={(e) => setType(e.target.value as CompanyType)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="input"
             >
               <option value="SUPPLIER">Supplier</option>
               <option value="MINE">Mining company</option>
             </select>
           </div>
           <div>
-            <label htmlFor="province" className="mb-1 block text-xs font-medium text-gray-600">
+            <label htmlFor="province" className="label">
               Province (optional)
             </label>
             <input
               id="province"
               value={province}
               onChange={(e) => setProvince(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="input"
             />
           </div>
           <Button type="submit" loading={loading} className="w-full">
@@ -151,18 +153,18 @@ function RegisterForm() {
                 setJoining(true);
                 setStep(2);
               }}
-              className="font-medium text-copper-600 underline"
+              className="text-link"
             >
               Use an invite code
             </button>
           </p>
         </form>
       ) : (
-        <form onSubmit={handleUserSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleUserSubmit} className="panel mt-8 space-y-5">
           {error && <ErrorBanner message={error} />}
           {joining && (
             <div>
-              <label htmlFor="inviteCode" className="mb-1 block text-xs font-medium text-gray-600">
+              <label htmlFor="inviteCode" className="label">
                 Invite code
               </label>
               <input
@@ -172,15 +174,15 @@ function RegisterForm() {
                 onChange={(e) => setInviteCode(e.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm"
+                className="input font-mono"
               />
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="hint">
                 Ask an admin at your company to generate one from the company profile.
               </p>
             </div>
           )}
           <div>
-            <label htmlFor="fullName" className="mb-1 block text-xs font-medium text-gray-600">
+            <label htmlFor="fullName" className="label">
               Your full name
             </label>
             <input
@@ -188,11 +190,11 @@ function RegisterForm() {
               required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="input"
             />
           </div>
           <div>
-            <label htmlFor="email" className="mb-1 block text-xs font-medium text-gray-600">
+            <label htmlFor="email" className="label">
               Email
             </label>
             <input
@@ -201,11 +203,11 @@ function RegisterForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="input"
             />
           </div>
           <div>
-            <label htmlFor="password" className="mb-1 block text-xs font-medium text-gray-600">
+            <label htmlFor="password" className="label">
               Password
             </label>
             <input
@@ -215,7 +217,7 @@ function RegisterForm() {
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="input"
             />
           </div>
           <Button type="submit" loading={loading} className="w-full">

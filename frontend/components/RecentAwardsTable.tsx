@@ -1,7 +1,7 @@
 import type { RecentAward } from '@/lib/types';
 import { Badge } from './Badge';
 import { EmptyState } from './EmptyState';
-import { formatCurrency } from '@/lib/format';
+import { formatMoney, formatDate } from '@/lib/format';
 
 export function RecentAwardsTable({ awards }: { awards: RecentAward[] }) {
   if (awards.length === 0) {
@@ -9,9 +9,9 @@ export function RecentAwardsTable({ awards }: { awards: RecentAward[] }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+    <div className="card overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500">
+        <thead className="border-b border-gray-200/80 bg-sand-50/60 text-[11px] uppercase tracking-[0.14em] text-gray-500">
           <tr>
             <th className="px-4 py-3 font-medium">Supplier</th>
             <th className="px-4 py-3 font-medium">Category</th>
@@ -30,10 +30,10 @@ export function RecentAwardsTable({ awards }: { awards: RecentAward[] }) {
               </td>
               <td className="px-4 py-3 text-gray-600">{award.categoryName}</td>
               <td className="px-4 py-3 text-gray-600">
-                {formatCurrency(award.amount, award.currency)}
+                {formatMoney(award.amount, award.currency)}
               </td>
               <td className="px-4 py-3 text-gray-500">
-                {new Date(award.awardedAt).toLocaleDateString()}
+                {formatDate(award.awardedAt)}
               </td>
             </tr>
           ))}

@@ -10,5 +10,5 @@ const TONE: Record<BidStatus, 'neutral' | 'copper' | 'chrome' | 'danger'> = {
 };
 
 export function BidStatusBadge({ status }: { status: BidStatus }) {
-  return <Badge tone={TONE[status]}>{status.toLowerCase()}</Badge>;
+  return <Badge tone={TONE[status]}>{status.charAt(0) + status.slice(1).toLowerCase()}</Badge>;
 }

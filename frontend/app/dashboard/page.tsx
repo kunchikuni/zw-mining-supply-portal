@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { getCompany, getLocalContentSummary, ApiError } from '@/lib/api';
 import type { Company, LocalContentSummary } from '@/lib/types';
@@ -12,8 +11,9 @@ import { RecentAwardsTable } from '@/components/RecentAwardsTable';
 import { CardSkeletonGrid } from '@/components/LoadingSkeleton';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { Button } from '@/components/Button';
+import { ButtonLink } from '@/components/Button';
 import { formatCurrency } from '@/lib/format';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function DashboardPage() {
   const { user, token } = useAuth();
@@ -53,9 +53,9 @@ export default function DashboardPage() {
         title="Sign in to view your dashboard"
         description="The local content dashboard is available to registered mining companies."
         action={
-          <Link href="/login">
-            <Button size="sm">Sign in</Button>
-          </Link>
+          <ButtonLink href="/login" size="sm">
+            Sign in
+          </ButtonLink>
         }
       />
     );
@@ -64,7 +64,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-8 w-64 animate-pulse rounded bg-gray-200" />
+        <div className="h-10 w-72 animate-pulse rounded bg-gray-100" />
         <CardSkeletonGrid count={4} />
       </div>
     );
@@ -76,11 +76,11 @@ export default function DashboardPage() {
     return (
       <EmptyState
         title="This dashboard is for mining companies"
-        description="As a supplier, track your bids from the RFQ board instead."
+        description="As a supplier, follow your bids and their outcomes on My bids."
         action={
-          <Link href="/rfqs">
-            <Button size="sm">Go to RFQ board</Button>
-          </Link>
+          <ButtonLink href="/bids/mine" size="sm">
+            Go to My bids
+          </ButtonLink>
         }
       />
     );
@@ -92,14 +92,13 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-xl font-semibold text-ink">Local content dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          {company?.name} · awarded procurement spend going to verified local suppliers.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Local content"
+        title="Local content dashboard"
+        description={`${company?.name ?? 'Your company'} · awarded procurement spend going to verified local suppliers.`}
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Local content"
           value={`${summary.localContentPercentage}%`}
@@ -128,23 +127,23 @@ export default function DashboardPage() {
           title="No awarded bids yet"
           description="Once you accept bids on your RFQs, your local content breakdown and trend will appear here."
           action={
-            <Link href="/rfqs/new">
-              <Button size="sm">Post an RFQ</Button>
-            </Link>
+            <ButtonLink href="/rfqs/new" size="sm">
+              Post an RFQ
+            </ButtonLink>
           }
         />
       ) : (
         <>
           <div className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
-              <h2 className="text-sm font-medium text-ink">Spend by category</h2>
+            <div className="card p-6">
+              <h2 className="section-title">Spend by category</h2>
               <p className="mt-1 text-xs text-gray-500">Local vs. non-local, awarded value</p>
               <div className="mt-4">
                 <CategoryBreakdownChart data={summary.byCategory} />
               </div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
-              <h2 className="text-sm font-medium text-ink">Local content trend</h2>
+            <div className="card p-6">
+              <h2 className="section-title">Local content trend</h2>
               <p className="mt-1 text-xs text-gray-500">Last 6 months</p>
               <div className="mt-4">
                 <TrendChart data={summary.monthlyTrend} />
@@ -153,7 +152,7 @@ export default function DashboardPage() {
           </div>
 
           <div>
-            <h2 className="mb-2 text-sm font-medium text-ink">Recent awards</h2>
+            <h2 className="mb-4 section-title">Recent awards</h2>
             <RecentAwardsTable awards={summary.recentAwards} />
           </div>
         </>

@@ -42,8 +42,8 @@ export function RfqOwnerPanel({ rfq, onChanged }: { rfq: Rfq; onChanged: () => v
   );
 
   return (
-    <div className="space-y-3 rounded-lg border border-gray-200 p-4">
-      <h3 className="font-medium text-ink">Manage this RFQ</h3>
+    <div className="panel space-y-4">
+      <h3 className="card-title">Manage this RFQ</h3>
 
       {rfq.status === 'OPEN' && (
         <>

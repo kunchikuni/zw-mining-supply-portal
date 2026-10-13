@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation';
 import { createRfq, getCategories, ApiError } from '@/lib/api';
 import type { Category } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
-import { Button } from '@/components/Button';
+import { Button, ButtonLink } from '@/components/Button';
+import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function NewRfqPage() {
   const router = useRouter();
@@ -53,16 +55,30 @@ export default function NewRfqPage() {
   }
 
   if (!user) {
-    return <ErrorBanner message="Sign in with a mining company account to post an RFQ." />;
+    return (
+      <EmptyState
+        title="Sign in to post an RFQ"
+        description="Requests for quote are posted by registered mining companies."
+        action={
+          <ButtonLink href="/login" size="sm">
+            Sign in
+          </ButtonLink>
+        }
+      />
+    );
   }
 
   return (
-    <div className="mx-auto max-w-lg">
-      <h1 className="text-xl font-semibold text-ink">Post a request for quote</h1>
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+    <div className="mx-auto max-w-2xl">
+      <PageHeader
+        eyebrow="For mines"
+        title="Post a request for quote"
+        description="Verified suppliers listed under the category you choose can bid until the deadline."
+      />
+      <form onSubmit={handleSubmit} className="panel mt-8 space-y-5">
         {error && <ErrorBanner message={error} />}
         <div>
-          <label htmlFor="title" className="mb-1 block text-xs font-medium text-gray-600">
+          <label htmlFor="title" className="label">
             Title
           </label>
           <input
@@ -71,11 +87,11 @@ export default function NewRfqPage() {
             minLength={3}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="input"
           />
         </div>
         <div>
-          <label htmlFor="categoryId" className="mb-1 block text-xs font-medium text-gray-600">
+          <label htmlFor="categoryId" className="label">
             Category
           </label>
           <select
@@ -83,7 +99,7 @@ export default function NewRfqPage() {
             required
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="input"
           >
             <option value="" disabled>
               Select a category
@@ -96,7 +112,7 @@ export default function NewRfqPage() {
           </select>
         </div>
         <div>
-          <label htmlFor="description" className="mb-1 block text-xs font-medium text-gray-600">
+          <label htmlFor="description" className="label">
             Description
           </label>
           <textarea
@@ -106,35 +122,35 @@ export default function NewRfqPage() {
             rows={4}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="input"
           />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label htmlFor="quantity" className="mb-1 block text-xs font-medium text-gray-600">
+            <label htmlFor="quantity" className="label">
               Quantity (optional)
             </label>
             <input
               id="quantity"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="input"
             />
           </div>
           <div>
-            <label htmlFor="province" className="mb-1 block text-xs font-medium text-gray-600">
+            <label htmlFor="province" className="label">
               Province (optional)
             </label>
             <input
               id="province"
               value={province}
               onChange={(e) => setProvince(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="input"
             />
           </div>
         </div>
         <div>
-          <label htmlFor="deadline" className="mb-1 block text-xs font-medium text-gray-600">
+          <label htmlFor="deadline" className="label">
             Bid deadline
           </label>
           <input
@@ -143,7 +159,7 @@ export default function NewRfqPage() {
             required
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="input"
           />
         </div>
         <Button type="submit" loading={loading} className="w-full">

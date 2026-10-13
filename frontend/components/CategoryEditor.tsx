@@ -67,8 +67,8 @@ export function CategoryEditor({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-gray-200 p-4">
-      <h3 className="font-medium text-ink">Edit your categories</h3>
+    <form onSubmit={handleSubmit} className="panel space-y-4">
+      <h3 className="card-title">Edit your categories</h3>
       <p className="text-xs text-gray-500">
         You can only bid on RFQs in a category listed here, so tick everything you supply.
       </p>
@@ -84,7 +84,7 @@ export function CategoryEditor({
                 type="checkbox"
                 checked={selected.has(c.id)}
                 onChange={() => toggle(c.id)}
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-gray-300 accent-copper-500"
               />
               {c.name}
             </label>

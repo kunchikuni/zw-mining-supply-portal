@@ -12,12 +12,16 @@ export function StatCard({
   accent?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-      <p className={`mt-2 text-2xl font-semibold ${accent ? 'text-chrome-600' : 'text-ink'}`}>
+    <div className="card p-6">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</p>
+      <p
+        className={`mt-3 font-display text-4xl font-semibold leading-none lining-nums tabular-nums ${
+          accent ? 'text-chrome-600' : 'text-ink'
+        }`}
+      >
         {value}
       </p>
-      {helpText && <p className="mt-1 text-xs text-gray-500">{helpText}</p>}
+      {helpText && <p className="mt-2 text-xs text-gray-500">{helpText}</p>}
     </div>
   );
 }

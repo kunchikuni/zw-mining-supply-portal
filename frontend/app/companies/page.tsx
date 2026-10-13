@@ -8,6 +8,7 @@ import { CompanyCard } from '@/components/CompanyCard';
 import { CardSkeletonGrid } from '@/components/LoadingSkeleton';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function CompaniesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -47,13 +48,12 @@ export default function CompaniesPage() {
   }, [filters]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-ink">Supplier &amp; mine directory</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Search verified companies by category, province, and type.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="Directory"
+        title="Suppliers & mines"
+        description="Search by name, category, province and type. Verified companies carry a green badge."
+      />
 
       <SearchFilters categories={categories} value={filters} onChange={setFilters} />
 
@@ -67,7 +67,7 @@ export default function CompaniesPage() {
           description="Try widening your search or clearing a filter."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {companies.map((company) => (
             <CompanyCard key={company.id} company={company} />
           ))}

@@ -5,6 +5,7 @@ import { createInvite, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button } from './Button';
 import { ErrorBanner } from './ErrorBanner';
+import { formatDate } from '@/lib/format';
 
 // Company admins use this to add teammates. The backend only stores a hash of
 // the code, so it's displayed here once and can't be looked up again.
@@ -58,14 +59,14 @@ export function InviteForm({ companyId }: { companyId: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-gray-200 p-4">
-      <h3 className="font-medium text-ink">Invite a teammate</h3>
+    <form onSubmit={handleSubmit} className="panel space-y-4">
+      <h3 className="card-title">Invite a teammate</h3>
       <p className="text-xs text-gray-500">
         Teammates can only join your company with a one-time invite. It expires after 7 days.
       </p>
       {error && <ErrorBanner message={error} />}
       <div>
-        <label htmlFor="inviteEmail" className="mb-1 block text-xs font-medium text-gray-600">
+        <label htmlFor="inviteEmail" className="label">
           Their email (optional)
         </label>
         <input
@@ -73,9 +74,9 @@ export function InviteForm({ companyId }: { companyId: string }) {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="input"
         />
-        <p className="mt-1 text-xs text-gray-400">
+        <p className="hint">
           If set, only this address can use the invite.
         </p>
       </div>
@@ -93,14 +94,14 @@ export function InviteForm({ companyId }: { companyId: string }) {
             aria-label="Invite link"
             value={invite.link}
             onFocus={(e) => e.currentTarget.select()}
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-xs"
+            className="input font-mono text-xs"
           />
           <div className="flex items-center gap-3">
             <Button type="button" variant="secondary" size="sm" onClick={copyLink}>
               {copied ? 'Copied' : 'Copy link'}
             </Button>
             <span className="text-xs text-gray-500">
-              Expires {new Date(invite.expiresAt).toLocaleDateString()}
+              Expires {formatDate(invite.expiresAt)}
             </span>
           </div>
         </div>

@@ -25,12 +25,12 @@ export function TrendChart({ data }: { data: MonthlyTrendPoint[] }) {
       >
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ left: -8, right: 16, top: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-            <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6B7280' }} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E7E5E4" />
+            <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#78716C' }} />
             <YAxis
               domain={[0, 100]}
               tickFormatter={(v) => `${v}%`}
-              tick={{ fontSize: 12, fill: '#6B7280' }}
+              tick={{ fontSize: 12, fill: '#78716C' }}
               width={40}
             />
             <Tooltip formatter={(v: number) => `${v}%`} />
@@ -38,9 +38,9 @@ export function TrendChart({ data }: { data: MonthlyTrendPoint[] }) {
               type="monotone"
               dataKey="localPercentage"
               name="Local content"
-              stroke="#237A5F"
+              stroke="#3F7D58"
               strokeWidth={2}
-              dot={{ r: 3, fill: '#237A5F' }}
+              dot={{ r: 3, fill: '#3F7D58' }}
             />
           </LineChart>
         </ResponsiveContainer>

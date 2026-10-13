@@ -32,12 +32,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-sm">
-      <h1 className="text-xl font-semibold text-ink">Sign in</h1>
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+    <div className="mx-auto max-w-md">
+      <div className="text-center">
+        <p className="eyebrow">Welcome back</p>
+        <h1 className="page-title mt-4">Sign in</h1>
+        <p className="page-lead mx-auto">Use the email and password you registered with.</p>
+      </div>
+      <form onSubmit={handleSubmit} className="panel mt-8 space-y-5">
         {error && <ErrorBanner message={error} />}
         <div>
-          <label htmlFor="email" className="mb-1 block text-xs font-medium text-gray-600">
+          <label htmlFor="email" className="label">
             Email
           </label>
           <input
@@ -46,11 +50,11 @@ export default function LoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="input"
           />
         </div>
         <div>
-          <label htmlFor="password" className="mb-1 block text-xs font-medium text-gray-600">
+          <label htmlFor="password" className="label">
             Password
           </label>
           <input
@@ -59,16 +63,16 @@ export default function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="input"
           />
         </div>
         <Button type="submit" loading={loading} className="w-full">
           Sign in
         </Button>
       </form>
-      <p className="mt-4 text-sm text-gray-500">
+      <p className="mt-6 text-center text-sm text-gray-500">
         No account yet?{' '}
-        <Link href="/register" className="text-copper-600 hover:underline">
+        <Link href="/register" className="text-link">
           Register your company
         </Link>
       </p>
