@@ -201,9 +201,13 @@ model Rating {
   ratedCompany   Company  @relation("RatedCompany", fields: [ratedCompanyId], references: [id])
   authorCompanyId String
   authorCompany   Company @relation("RatingAuthor", fields: [authorCompanyId], references: [id])
-  score          Int      // 1-5
+  score          Int      // 1-5, enforced by CreateRatingDto
   comment        String?
   createdAt      DateTime @default(now())
 
+  // A mine rates each supplier it awarded once per RFQ. Enforced here rather
+  // than with a read-then-write check, so two concurrent requests can't both
+  // get through.
+  @@unique([rfqId, authorCompanyId, ratedCompanyId])
   @@index([ratedCompanyId])
 }

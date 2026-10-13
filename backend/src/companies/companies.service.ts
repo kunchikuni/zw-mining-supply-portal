@@ -62,7 +62,13 @@ export class CompaniesService {
       include: {
         categories: { include: { category: true } },
         documents: true,
-        ratingsReceived: true,
+        // Score, comment and date only. A rating can only exist for an
+        // accepted bid, so its rfqId + author would reveal who won which RFQ —
+        // exactly what sealed bids keep private.
+        ratingsReceived: {
+          select: { id: true, score: true, comment: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
     if (!company) throw new NotFoundException('Company not found');
