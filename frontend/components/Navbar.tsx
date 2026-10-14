@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
+import { isStaffRole } from '@/lib/labels';
 import { BrandMark } from './BrandMark';
 import { Button, ButtonLink } from './Button';
 
@@ -29,6 +30,12 @@ const SIGNED_IN_LINKS: NavLink[] = [
   { href: '/rfqs/mine', label: 'My RFQs', isActive: (p) => p === '/rfqs/mine' },
 ];
 
+// Portal staff (verifiers / admins) aren't mines or suppliers, so they get
+// the verification workspace instead of the buyer/seller links.
+const STAFF_LINKS: NavLink[] = [
+  { href: '/verify', label: 'Verification', isActive: (p) => p.startsWith('/verify') },
+];
+
 export function Navbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname() ?? '/';
@@ -39,7 +46,8 @@ export function Navbar() {
     setMenuOpen(false);
   }, [pathname]);
 
-  const links = user ? [...PUBLIC_LINKS, ...SIGNED_IN_LINKS] : PUBLIC_LINKS;
+  const staff = isStaffRole(user?.role);
+  const links = !user ? PUBLIC_LINKS : staff ? [...PUBLIC_LINKS, ...STAFF_LINKS] : [...PUBLIC_LINKS, ...SIGNED_IN_LINKS];
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200/70 bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/75">
@@ -77,9 +85,11 @@ export function Navbar() {
         <div className="hidden items-center gap-3 lg:flex">
           {user ? (
             <>
-              <ButtonLink href="/rfqs/new" size="sm">
-                Post an RFQ
-              </ButtonLink>
+              {!staff && (
+                <ButtonLink href="/rfqs/new" size="sm">
+                  Post an RFQ
+                </ButtonLink>
+              )}
               <Button variant="ghost" size="sm" onClick={logout}>
                 Sign out
               </Button>
@@ -138,9 +148,11 @@ export function Navbar() {
             <div className="flex flex-wrap items-center gap-3 py-4">
               {user ? (
                 <>
-                  <ButtonLink href="/rfqs/new" size="sm">
-                    Post an RFQ
-                  </ButtonLink>
+                  {!staff && (
+                    <ButtonLink href="/rfqs/new" size="sm">
+                      Post an RFQ
+                    </ButtonLink>
+                  )}
                   <Button variant="secondary" size="sm" onClick={logout}>
                     Sign out
                   </Button>

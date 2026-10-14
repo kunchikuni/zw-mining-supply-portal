@@ -4,7 +4,7 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { SearchCompaniesDto } from './dto/search-companies.dto';
 import { SetCategoriesDto } from './dto/set-categories.dto';
-import { VerificationStatus } from '@prisma/client';
+import { SetVerificationStatusDto } from './dto/set-verification-status.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtOptionalAuthGuard } from '../auth/jwt-optional-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -27,6 +27,15 @@ export class CompaniesController {
   @Get()
   search(@Query() filters: SearchCompaniesDto) {
     return this.companiesService.search(filters);
+  }
+
+  // Companies waiting on a verifier's decision. Declared before `:id` so
+  // "verification-queue" isn't captured as a company id.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('VERIFIER', 'PLATFORM_ADMIN')
+  @Get('verification-queue')
+  verificationQueue() {
+    return this.companiesService.verificationQueue();
   }
 
   // Public (directory must be browsable by anonymous visitors), but uses an
@@ -75,10 +84,7 @@ export class CompaniesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('VERIFIER', 'PLATFORM_ADMIN')
   @Patch(':id/verification-status')
-  setVerificationStatus(
-    @Param('id') id: string,
-    @Body('status') status: VerificationStatus,
-  ) {
-    return this.companiesService.setVerificationStatus(id, status);
+  setVerificationStatus(@Param('id') id: string, @Body() dto: SetVerificationStatusDto) {
+    return this.companiesService.setVerificationStatus(id, dto.status);
   }
 }

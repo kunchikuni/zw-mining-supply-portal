@@ -13,6 +13,11 @@ datasource db {
 enum CompanyType {
   MINE
   SUPPLIER
+  // The portal operator's own company, which VERIFIER / PLATFORM_ADMIN users
+  // belong to (every user needs a company). Never offered at signup, never
+  // listed in the directory, and can't bid (it has no categories and is
+  // never verified). Created only by `npm run create:staff`.
+  PLATFORM
 }
 
 enum VerificationStatus {

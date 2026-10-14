@@ -1,4 +1,6 @@
-export type CompanyType = 'MINE' | 'SUPPLIER';
+// PLATFORM is the portal operator's own company (verifier / admin accounts);
+// it never appears in the directory or at signup.
+export type CompanyType = 'MINE' | 'SUPPLIER' | 'PLATFORM';
 
 export type VerificationStatus = 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
 
@@ -54,9 +56,26 @@ export interface DocumentRecord {
   id: string;
   companyId: string;
   docType: DocumentType;
+  // Empty for visitors: only the owning company and verifiers get the link.
   fileUrl: string;
   status: DocumentStatus;
   uploadedAt: string;
+  reviewNote?: string | null;
+  reviewedBy?: string | null;
+  // Only on the verifier's review queue.
+  company?: Pick<Company, 'id' | 'name' | 'type' | 'verificationStatus'>;
+}
+
+// A company waiting on a verifier's decision (GET /companies/verification-queue).
+export interface VerificationQueueCompany {
+  id: string;
+  name: string;
+  type: CompanyType;
+  province?: string | null;
+  town?: string | null;
+  verificationStatus: VerificationStatus;
+  updatedAt: string;
+  documents: Pick<DocumentRecord, 'id' | 'docType' | 'status' | 'uploadedAt'>[];
 }
 
 export interface Rfq {

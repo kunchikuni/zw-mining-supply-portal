@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
-import { DocumentStatus } from '@prisma/client';
+import { ReviewDocumentDto } from './dto/review-document.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -40,13 +40,8 @@ export class DocumentsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('VERIFIER', 'PLATFORM_ADMIN')
   @Patch(':id/review')
-  review(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-    @Body('status') status: DocumentStatus,
-    @Body('reviewNote') reviewNote?: string,
-  ) {
+  review(@CurrentUser() user: JwtPayload, @Param('id') id: string, @Body() dto: ReviewDocumentDto) {
     // reviewedBy is the authenticated verifier, not a value the client sends.
-    return this.documentsService.review(id, status, user.email, reviewNote);
+    return this.documentsService.review(id, dto, user.email);
   }
 }

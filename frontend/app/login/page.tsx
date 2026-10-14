@@ -4,7 +4,8 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { login, ApiError } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { decodeToken, useAuth } from '@/lib/auth';
+import { isStaffRole } from '@/lib/labels';
 import { Button } from '@/components/Button';
 import { ErrorBanner } from '@/components/ErrorBanner';
 
@@ -23,7 +24,8 @@ export default function LoginPage() {
     try {
       const { accessToken } = await login(email, password);
       setToken(accessToken);
-      router.push('/companies');
+      // Verifiers go straight to their workspace; everyone else to the directory.
+      router.push(isStaffRole(decodeToken(accessToken)?.role) ? '/verify' : '/companies');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not sign in. Try again.');
     } finally {

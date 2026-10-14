@@ -1,9 +1,9 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
 import { CompanyType, VerificationStatus } from '@prisma/client';
 
 export class SearchCompaniesDto {
   @IsOptional()
-  @IsEnum(CompanyType)
+  @IsIn([CompanyType.MINE, CompanyType.SUPPLIER])
   type?: CompanyType;
 
   @IsOptional()

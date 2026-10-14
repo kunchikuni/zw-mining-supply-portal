@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -7,7 +8,13 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { SearchCompaniesDto } from './dto/search-companies.dto';
-import { UserRole, VerificationStatus, type Document as DocumentModel } from '@prisma/client';
+import {
+  CompanyType,
+  DocumentStatus,
+  UserRole,
+  VerificationStatus,
+  type Document as DocumentModel,
+} from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import {
   BOOTSTRAP_INVITE_TTL_MS,
@@ -43,7 +50,8 @@ export class CompaniesService {
   async search(filters: SearchCompaniesDto) {
     return this.prisma.company.findMany({
       where: {
-        type: filters.type,
+        // The portal's own staff company never appears in the directory.
+        type: filters.type ?? { not: CompanyType.PLATFORM },
         province: filters.province,
         verificationStatus: filters.verificationStatus,
         name: filters.q ? { contains: filters.q, mode: 'insensitive' } : undefined,
@@ -170,12 +178,57 @@ export class CompaniesService {
     }
   }
 
-  // A company is only search-visible/tender-eligible once a verifier has
-  // reviewed its documents — this is the trust layer the whole product depends on.
-  setVerificationStatus(companyId: string, status: VerificationStatus) {
+  // A company is only tender-eligible once a verifier has reviewed its
+  // documents — this is the trust layer the whole product depends on, so a
+  // company can't be marked VERIFIED without at least one approved document
+  // behind the decision. Rejecting, or resetting to PENDING / UNVERIFIED, is
+  // always allowed.
+  async setVerificationStatus(companyId: string, status: VerificationStatus) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true, type: true },
+    });
+    if (!company || company.type === CompanyType.PLATFORM) {
+      throw new NotFoundException('Company not found');
+    }
+
+    if (status === VerificationStatus.VERIFIED) {
+      const approved = await this.prisma.document.count({
+        where: { companyId, status: DocumentStatus.APPROVED },
+      });
+      if (approved === 0) {
+        throw new ConflictException(
+          'Approve at least one of this company\'s documents before marking it verified',
+        );
+      }
+    }
+
     return this.prisma.company.update({
       where: { id: companyId },
       data: { verificationStatus: status },
+    });
+  }
+
+  // Companies waiting on a verifier: they submitted a document, which moves
+  // them to PENDING (see DocumentsService.register). Oldest first, with a
+  // summary of their documents so the verifier can see what's been reviewed.
+  verificationQueue() {
+    return this.prisma.company.findMany({
+      where: { verificationStatus: VerificationStatus.PENDING, type: { not: CompanyType.PLATFORM } },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        province: true,
+        town: true,
+        verificationStatus: true,
+        updatedAt: true,
+        documents: {
+          select: { id: true, docType: true, status: true, uploadedAt: true },
+          orderBy: { uploadedAt: 'asc' },
+        },
+      },
+      orderBy: { updatedAt: 'asc' },
     });
   }
 }

@@ -11,6 +11,7 @@ import type {
   LocalContentSummary,
   Rfq,
   RfqStatus,
+  VerificationQueueCompany,
   VerificationStatus,
 } from './types';
 
@@ -147,6 +148,39 @@ export function registerDocument(
   return request<DocumentRecord>('/documents', {
     method: 'POST',
     body: JSON.stringify(data),
+    token,
+  });
+}
+
+// ---- Verification (VERIFIER / PLATFORM_ADMIN only) ----
+// Pending documents, oldest first, each with its company.
+export function getDocumentReviewQueue(token: string) {
+  return request<DocumentRecord[]>('/documents/review-queue', { token });
+}
+
+// A document is reviewed once. Rejecting requires a note.
+export function reviewDocument(
+  id: string,
+  decision: { status: 'APPROVED' | 'REJECTED'; reviewNote?: string },
+  token: string,
+) {
+  return request<DocumentRecord>(`/documents/${id}/review`, {
+    method: 'PATCH',
+    body: JSON.stringify(decision),
+    token,
+  });
+}
+
+// Companies in PENDING (they've submitted documents), with a document summary.
+export function getVerificationQueue(token: string) {
+  return request<VerificationQueueCompany[]>('/companies/verification-queue', { token });
+}
+
+// VERIFIED needs at least one approved document; the server enforces it.
+export function setVerificationStatus(companyId: string, status: VerificationStatus, token: string) {
+  return request<Company>(`/companies/${companyId}/verification-status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
     token,
   });
 }
