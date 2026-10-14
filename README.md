@@ -86,9 +86,9 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 | Resource | Endpoints |
 |---|---|
 | `/auth` | `POST /register` (needs an `inviteCode`), `POST /login` |
-| `/companies` | `POST /` (returns the first-admin `inviteCode`), `GET /` (search/filter), `GET /:id`, `POST /:id/categories` (add), `PUT /:id/categories` (replace the whole listing), `POST /:id/invites` (company admin), `PATCH /:id/verification-status` |
+| `/companies` | `POST /` (returns the first-admin `inviteCode`), `GET /` (search/filter), `GET /:id`, `POST /:id/categories` (add), `PUT /:id/categories` (replace the whole listing), `POST /:id/invites` (company admin), `GET /verification-queue` (verifiers: companies in PENDING with a document summary), `PATCH /:id/verification-status` (verifiers; `VERIFIED` needs an approved document) |
 | `/categories` | `GET /`, `POST /` (platform admin only) |
-| `/documents` | `POST /`, `GET /?companyId=`, `GET /review-queue`, `PATCH /:id/review` |
+| `/documents` | `POST /` (also moves an unverified/rejected company to PENDING), `GET /?companyId=`, `GET /review-queue` (verifiers), `PATCH /:id/review` (verifiers; once per document; rejecting needs a `reviewNote`) |
 | `/rfqs` | `POST /`, `GET /` (still-biddable, filterable; optional auth also returns the caller's own expired RFQs), `GET /mine` (all of the caller's RFQs, any status), `GET /:id` (bids sealed: everyone gets the count, only the posting mine gets every bid, a bidder gets its own), `PATCH /:id/status` (owner: close or cancel) |
 | `/bids` | `POST /`, `GET /?rfqId=` (sign-in and `rfqId` required; same sealed rule), `GET /mine` (the caller's bids across every RFQ, each with its RFQ), `PATCH /:id/status` (owner: shortlist/accept/reject; bidder: withdraw — accept also awards the RFQ) |
 | `/ratings` | `POST /` (sign-in; the posting mine rates a supplier it accepted on an awarded RFQ, once), `GET /company/:id/average` (public aggregate) |
@@ -119,6 +119,7 @@ cp .env.example .env       # set DATABASE_URL and JWT_SECRET
 npm install
 npx prisma migrate dev --name init
 npm run seed
+npm run create:staff -- --email you@example.com --name "Your Name"   # first verifier account (prints a one-time password)
 npm run start:dev          # http://localhost:3000
 
 # Frontend (separate terminal)
@@ -131,7 +132,9 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 ## Known gaps / next honest steps
 
 - **Auth hardening**: JWT is still in `localStorage` (XSS-readable). Production should move to an httpOnly cookie + refresh-token pair. Route-level guards and ownership checks are now in place (see "Auth & authorization" below) — this remaining item is about the token's storage, not its enforcement.
-- **Invite management is minimal**: admins can mint a one-time invite (`POST /companies/:id/invites`) but can't list pending ones, revoke one, or remove a user, and there's no way to hand over or add a second `COMPANY_ADMIN`. `PLATFORM_ADMIN` and `VERIFIER` accounts still have to be created by editing the database — there is no bootstrap path for them.
+- **Invite management is minimal**: admins can mint a one-time invite (`POST /companies/:id/invites`) but can't list pending ones, revoke one, or remove a user, and there's no way to hand over or add a second `COMPANY_ADMIN`. Staff accounts are created with `npm run create:staff`; there is no UI for managing them (listing, disabling, resetting a password).
+- **Verification decisions are one-way in the UI**: a reviewed document can't be re-reviewed (by design), and the workspace offers verify/reject only for companies in `PENDING` — revoking an already-verified company means calling `PATCH /companies/:id/verification-status` directly. There's no audit history beyond `reviewedBy` / `reviewNote` on each document, and nobody is notified of a decision.
+- **Document expiry is still not enforced**: `expiresAt` is stored but nothing marks a document `EXPIRED` or revisits a verified company when its tax clearance lapses.
 - **Review decisions are final and silent**: accepting or rejecting a bid and cancelling an RFQ can't be undone (the server enforces it — accepted bids are what the local-content dashboard totals), a closed RFQ can't be reopened, and nobody is told. A supplier can see what became of a bid on "My bids", but only by looking — nothing tells them. The push side is the notifications gap below; undo/reopen is a product decision about how much the dashboard numbers should be allowed to move.
 - **A deadline doesn't close an RFQ**: bidding stops at the deadline and the RFQ drops off the public board, but its status stays `OPEN` until the mine closes, cancels or awards it. That's deliberate (no scheduler, and the status is the mine's call), but it means `status` alone never tells you whether an RFQ is biddable — read `biddingOpen`.
 - **The nav doesn't know who you are**: every signed-in user sees "My bids", "My RFQs" and "Post an RFQ", because the JWT carries `companyId` and `role` but not whether the company is a mine or a supplier. Each page handles the wrong audience with an empty state, but adding `companyType` to the token claims would let the navbar show only what applies.
@@ -148,7 +151,11 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 
 - `JwtStrategy` + `JwtAuthGuard` — any route with `@UseGuards(JwtAuthGuard)` requires a valid bearer token; `req.user` is the decoded `{ sub, email, companyId, role }` payload.
 - `JwtOptionalAuthGuard` — decodes the token if present but never rejects; used on `GET /companies/:id` so the directory stays public while owners/verifiers get a fuller view.
-- `RolesGuard` + `@Roles(...)` — restricts a route to specific `UserRole` values. Currently used to lock `PATCH /companies/:id/verification-status` and the document review endpoints to `VERIFIER`/`PLATFORM_ADMIN`.
+- `RolesGuard` + `@Roles(...)` — restricts a route to specific `UserRole` values. Used to lock verification (`PATCH /companies/:id/verification-status`, `GET /companies/verification-queue`) and document review (`GET /documents/review-queue`, `PATCH /documents/:id/review`) to `VERIFIER`/`PLATFORM_ADMIN`, and `POST /categories` to `PLATFORM_ADMIN`.
+- **Verification is done by portal staff, in the app.** Staff (`VERIFIER` / `PLATFORM_ADMIN`) are created with `npm run create:staff -- --email … --name … [--role PLATFORM_ADMIN] [--password-file <path>]` and belong to the portal's own company of type `PLATFORM` — a type that can't be chosen at signup (400), never appears in the directory, and can't be used as a directory filter. Signing in takes staff to `/verify`, and their nav shows Verification instead of the mine/supplier links.
+  - Submitting a document moves an `UNVERIFIED` or `REJECTED` company to `PENDING` (a `VERIFIED` company stays verified), which is what puts it in the verifier's queue.
+  - A document is reviewed **once** (`PENDING → APPROVED | REJECTED`, conditional update, so a second reviewer gets 409); rejecting requires a reason, which the company sees on its profile next to a "View document" link.
+  - A company can't be marked `VERIFIED` without at least one `APPROVED` document (409); rejecting, or resetting to `PENDING` / `UNVERIFIED`, is always allowed.
 - **Joining a company needs a one-time invite code** — `POST /auth/register` no longer takes a `companyId`; the company (and the role) come from the code, so knowing a company's public id gets you nothing.
   - Creating a company (`POST /companies`) mints the first code, role `COMPANY_ADMIN`, and returns it in that response. That's step 2 of onboarding: the creator registers with it and becomes the company's admin.
   - A company admin (or `PLATFORM_ADMIN`) mints further codes with `POST /companies/:id/invites` — role `COMPANY_MEMBER`, 7-day expiry, optionally locked to one email address. The frontend shows it as a `/register#invite=…` link on the company profile (fragment, not query string, so it stays out of server logs and `Referer`).
@@ -194,6 +201,7 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
   ```
 - **Run Prisma from `backend/`, never the repo root.** The root has no `package.json`, so `npx prisma` there skips the project's pinned Prisma 5.22 and downloads npm's `latest` (currently an 8.x pre-release) — whose CLI has no `migrate` command and fails with `No command registered for 'migrate'`. From `backend/`, `npx prisma --version` should report 5.22.0; `npm run prisma:migrate -- --name <name>` always uses the pinned version.
 - **Schema change — run a migration.** This pass adds the `Invite` model: from `backend/`, `npx prisma migrate dev --name add-invites` (or `npx prisma db push` on a throwaway DB). Users registered before it are all `COMPANY_MEMBER`, so no company in an existing dev DB has an admin yet — promote one by hand (`UPDATE "User" SET role = 'COMPANY_ADMIN' WHERE email = '…';`) or re-register.
+- **Third schema change: a `PLATFORM` company type** for portal staff. It only adds an enum value: `npx prisma migrate dev --name platform-company-type` from `backend/`.
 - **Second schema change: ratings are unique per (RFQ, author, rated company).** From `backend/`, `npx prisma migrate dev --name unique-ratings`. Ratings could be posted by anyone before, so a dev database may hold duplicates or ratings that don't match any accepted bid; the migration fails on duplicates. Look first with `SELECT "rfqId", "authorCompanyId", "ratedCompanyId", COUNT(*) FROM "Rating" GROUP BY 1, 2, 3 HAVING COUNT(*) > 1;` and clear anything that shouldn't be there before migrating.
 - **Verified for the invite + category-editor pass**: backend and frontend `tsc --noEmit`, full `next build`, the invite redemption/authorization/category logic exercised against an in-memory Prisma fake (concurrent redemption, rollback on duplicate email, cross-company invite attempt, replace-set semantics), and the register → category editor → invite-link flow driven in a browser against a stub API. The real NestJS server against real Postgres is still unrun.
 

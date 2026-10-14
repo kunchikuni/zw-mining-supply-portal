@@ -1,23 +1,7 @@
-import type { DocumentRecord, DocumentType } from '@/lib/types';
+import type { DocumentRecord } from '@/lib/types';
+import { DOC_STATUS_TONE, DOC_TYPE_LABELS, sentenceCase } from '@/lib/labels';
 import { Badge } from './Badge';
 import { EmptyState } from './EmptyState';
-
-const DOC_TYPE_LABELS: Record<DocumentType, string> = {
-  COMPANY_REGISTRATION: 'Company registration',
-  TAX_CLEARANCE: 'Tax clearance',
-  NSSA_COMPLIANCE: 'NSSA compliance',
-  PRAZ_REGISTRATION: 'PRAZ registration',
-  SAFETY_CERTIFICATE: 'Safety certificate',
-  QUALITY_CERTIFICATE: 'Quality certificate',
-  OTHER: 'Other document',
-};
-
-const STATUS_TONE: Record<DocumentRecord['status'], 'neutral' | 'copper' | 'chrome' | 'danger'> = {
-  PENDING: 'copper',
-  APPROVED: 'chrome',
-  REJECTED: 'danger',
-  EXPIRED: 'danger',
-};
 
 export function DocumentList({ documents }: { documents: DocumentRecord[] }) {
   if (documents.length === 0) {
@@ -27,9 +11,22 @@ export function DocumentList({ documents }: { documents: DocumentRecord[] }) {
   return (
     <ul className="card divide-y divide-gray-100">
       {documents.map((doc) => (
-        <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
-          <span className="text-sm font-medium text-ink">{DOC_TYPE_LABELS[doc.docType]}</span>
-          <Badge tone={STATUS_TONE[doc.status]}>{doc.status.charAt(0) + doc.status.slice(1).toLowerCase()}</Badge>
+        <li key={doc.id} className="px-5 py-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-sm font-medium text-ink">{DOC_TYPE_LABELS[doc.docType]}</span>
+              {/* The server only sends the link to the owner and verifiers. */}
+              {doc.fileUrl && (
+                <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-link text-xs">
+                  View document
+                </a>
+              )}
+            </div>
+            <Badge tone={DOC_STATUS_TONE[doc.status]}>{sentenceCase(doc.status)}</Badge>
+          </div>
+          {doc.status === 'REJECTED' && doc.reviewNote && (
+            <p className="mt-2 text-xs leading-relaxed text-red-800">Reason: {doc.reviewNote}</p>
+          )}
         </li>
       ))}
     </ul>

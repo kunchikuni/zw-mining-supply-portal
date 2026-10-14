@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
 import { CompanyType } from '@prisma/client';
 
 export class CreateCompanyDto {
@@ -6,7 +6,9 @@ export class CreateCompanyDto {
   @MinLength(2)
   name: string;
 
-  @IsEnum(CompanyType)
+  // Only the two public types: PLATFORM companies are created by the
+  // create:staff script, never through signup.
+  @IsIn([CompanyType.MINE, CompanyType.SUPPLIER])
   type: CompanyType;
 
   @IsOptional()
