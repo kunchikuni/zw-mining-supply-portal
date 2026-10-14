@@ -11,8 +11,24 @@ const statusMatches = (current: string, cond: unknown) =>
 // One in-memory store for RFQs, companies and bids. Interactive transactions
 // keep an undo log, so a failure part-way through rolls back like Postgres.
 function makeDb(rfqs: Row[], bids: Row[], companies: Row[] = []) {
-  const state = { rfqs, bids, companies, created: [] as Row[], failRfqUpdate: false, beforeBidUpdate: undefined as undefined | (() => void) };
+  const state = {
+    rfqs,
+    bids,
+    companies,
+    created: [] as Row[],
+    locks: [] as string[],
+    failRfqUpdate: false,
+    beforeBidUpdate: undefined as undefined | (() => void),
+    beforeLock: undefined as undefined | (() => void),
+  };
   const build = (undo: Array<() => void>) => ({
+    // Only BidsService.create's `SELECT status, deadline ... FOR UPDATE`.
+    $queryRaw: async (_sql: TemplateStringsArray, id: string) => {
+      state.beforeLock?.();
+      state.locks.push(id);
+      const r = state.rfqs.find((x) => x.id === id);
+      return r ? [{ status: r.status, deadline: r.deadline }] : [];
+    },
     rfq: {
       findUnique: async ({ where }: Row) => {
         const r = state.rfqs.find((x) => x.id === where.id);
@@ -37,10 +53,21 @@ function makeDb(rfqs: Row[], bids: Row[], companies: Row[] = []) {
     },
     bid: {
       create: async ({ data }: Row) => {
-        const row = { id: `new-${state.created.length + 1}`, ...data };
+        const n = state.created.length + 1;
+        const row = { id: `new-${n}`, status: 'SUBMITTED', submittedAt: new Date(Date.UTC(2026, 9, 10, 0, 0, n)), ...data };
         state.created.push(row);
+        state.bids.push(row);
+        undo.push(() => {
+          state.created.splice(state.created.indexOf(row), 1);
+          state.bids.splice(state.bids.indexOf(row), 1);
+        });
         return row;
       },
+      findFirst: async ({ where, orderBy }: Row) =>
+        state.bids
+          .filter((b) => b.rfqId === where.rfqId && b.supplierCompanyId === where.supplierCompanyId && statusMatches(b.status, where.status))
+          .sort((a, b) => (orderBy?.submittedAt === 'desc' ? -1 : 1) * (a.submittedAt - b.submittedAt))
+          .map((b) => ({ ...b }))[0] ?? null,
       findUnique: async ({ where }: Row) => {
         const b = state.bids.find((x) => x.id === where.id);
         return b ? { ...b, rfq: { ...state.rfqs.find((r) => r.id === b.rfqId) } } : null;
@@ -150,6 +177,80 @@ describe('BidsService.create — who can bid, and when', () => {
   it('checks the RFQ state first: own CLOSED RFQ is a 409', async () => {
     const { service } = makeDb([rfq({ status: 'CLOSED' })], [], [verified('mine1')]);
     await expect(service.create('mine1', dto)).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe('BidsService.create — a second bid revises the first', () => {
+  const companies = [verified('sup1'), verified('sup2')];
+  const bidAgain = (service: BidsService, amount = 90) => service.create('sup1', { rfqId: 'r1', amount });
+
+  it('replaces the live bid: the old one becomes SUPERSEDED, the new one points back to it', async () => {
+    const { state, service } = makeDb([rfq()], [bid()], companies);
+    const out = await bidAgain(service);
+    expect(out).toMatchObject({ status: 'SUBMITTED', revisionOfId: 'b1', amount: 90 });
+    expect(state.bids.find((b) => b.id === 'b1')!.status).toBe('SUPERSEDED');
+  });
+
+  it('sends a revised SHORTLISTED bid back to SUBMITTED', async () => {
+    const { state, service } = makeDb([rfq()], [bid({ status: 'SHORTLISTED' })], companies);
+    const out = await bidAgain(service);
+    expect(out.status).toBe('SUBMITTED');
+    expect(state.bids.find((b) => b.id === 'b1')!.status).toBe('SUPERSEDED');
+  });
+
+  it('chains: a third bid revises the second, not the first', async () => {
+    const { state, service } = makeDb([rfq()], [bid()], companies);
+    const second = await bidAgain(service, 95);
+    const third = await bidAgain(service, 90);
+    expect(third.revisionOfId).toBe(second.id);
+    expect(state.bids.filter((b) => b.status === 'SUPERSEDED').map((b) => b.id)).toEqual(['b1', second.id]);
+  });
+
+  it.each(['WITHDRAWN', 'REJECTED'])('treats a bid after a %s one as a fresh bid, leaving the old one alone', async (status) => {
+    const { state, service } = makeDb([rfq()], [bid({ status })], companies);
+    const out = await bidAgain(service);
+    expect(out.revisionOfId).toBeUndefined();
+    expect(state.bids.find((b) => b.id === 'b1')!.status).toBe(status);
+  });
+
+  it("only touches the caller's own live bid on this RFQ", async () => {
+    const others = [bid({ id: 'theirs', supplierCompanyId: 'sup2' }), bid({ id: 'elsewhere', rfqId: 'r2' })];
+    const { state, service } = makeDb([rfq(), rfq({ id: 'r2' })], others, companies);
+    const out = await bidAgain(service);
+    expect(out.revisionOfId).toBeUndefined();
+    expect(state.bids.filter((b) => b.status === 'SUPERSEDED')).toEqual([]);
+  });
+
+  it('takes the RFQ lock before looking for the live bid', async () => {
+    const { state, service } = makeDb([rfq()], [bid()], companies);
+    await bidAgain(service);
+    expect(state.locks).toEqual(['r1']);
+  });
+
+  it('answers 409 and changes nothing if the mine reviewed the bid mid-revision', async () => {
+    const { state, service } = makeDb([rfq()], [bid()], companies);
+    state.beforeBidUpdate = () => {
+      state.bids[0].status = 'ACCEPTED';
+    };
+    await expect(bidAgain(service)).rejects.toMatchObject({ status: 409 });
+    expect(state.bids.map((b) => [b.id, b.status])).toEqual([['b1', 'ACCEPTED']]);
+    expect(state.created).toEqual([]);
+  });
+
+  it.each(['AWARDED', 'CLOSED'])('re-checks the RFQ under the lock: %s since the first check -> 409, nothing changed', async (status) => {
+    const { state, service } = makeDb([rfq()], [bid()], companies);
+    state.beforeLock = () => {
+      state.rfqs[0].status = status;
+    };
+    await expect(bidAgain(service)).rejects.toMatchObject({ status: 409 });
+    expect(state.bids.map((b) => [b.id, b.status])).toEqual([['b1', 'SUBMITTED']]);
+    expect(state.created).toEqual([]);
+  });
+
+  it('refuses to revise once the deadline has passed (409), leaving the bid as it was', async () => {
+    const { state, service } = makeDb([rfq({ deadline: D('2000-01-01T00:00:00Z') })], [bid()], companies);
+    await expect(bidAgain(service)).rejects.toMatchObject({ status: 409 });
+    expect(state.bids[0].status).toBe('SUBMITTED');
   });
 });
 
@@ -299,6 +400,36 @@ describe('BidsService.findMine', () => {
     const { service } = makeDb(rfqs, bids);
     const flags = Object.fromEntries((await service.findMine('sup1')).map((b) => [b.id, b.rfq.biddingOpen]));
     expect(flags).toEqual({ 'b-live': true, 'b-expired': false, 'b-awarded': false });
+  });
+});
+
+describe('BidsService listings — one entry per offer', () => {
+  const chain = () => [
+    bid({ id: 'v1', amount: '100', status: 'SUPERSEDED', submittedAt: D('2026-10-01') }),
+    bid({ id: 'v2', amount: '95', status: 'SUPERSEDED', revisionOfId: 'v1', submittedAt: D('2026-10-02') }),
+    bid({ id: 'v3', amount: '90', status: 'SHORTLISTED', revisionOfId: 'v2', submittedAt: D('2026-10-03') }),
+    bid({ id: 'o1', supplierCompanyId: 'sup2', submittedAt: D('2026-10-02') }),
+  ];
+
+  it('gives the mine the current version of each offer, with the replaced ones newest first', async () => {
+    const { service } = makeDb([rfq()], chain());
+    const out = await service.findByRfq('r1', MINE);
+    expect(out.map((b) => b.id)).toEqual(['o1', 'v3']);
+    expect(out[1].history.map((b) => b.id)).toEqual(['v2', 'v1']);
+    expect(out[0].history).toEqual([]);
+  });
+
+  it("gives a bidder its own offer's history, and nobody else's", async () => {
+    const { service } = makeDb([rfq()], chain());
+    const out = await service.findByRfq('r1', user('sup1'));
+    expect(out.map((b) => [b.id, b.history.map((h) => h.id)])).toEqual([['v3', ['v2', 'v1']]]);
+  });
+
+  it('lists a revised bid once on My bids', async () => {
+    const { service } = makeDb([rfq()], chain());
+    const out = await service.findMine('sup1');
+    expect(out.map((b) => b.id)).toEqual(['v3']);
+    expect(out[0].history.map((b) => b.id)).toEqual(['v2', 'v1']);
   });
 });
 

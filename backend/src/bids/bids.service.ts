@@ -9,6 +9,7 @@ import { RfqsService } from '../rfqs/rfqs.service';
 import { CreateBidDto } from './dto/create-bid.dto';
 import { isBiddingOpen } from '../rfqs/bidding-window';
 import { visibleBidsWhere } from './bid-visibility';
+import { LIVE_BID_STATUSES, withRevisionHistory } from './bid-revisions';
 import { BidStatus, RfqStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 
@@ -26,6 +27,8 @@ const BID_TRANSITIONS: Record<BidStatus, BidStatus[]> = {
   [BidStatus.ACCEPTED]: [],
   [BidStatus.REJECTED]: [],
   [BidStatus.WITHDRAWN]: [],
+  // Reached only by the supplier revising its bid (see create).
+  [BidStatus.SUPERSEDED]: [],
 };
 
 @Injectable()
@@ -53,11 +56,47 @@ export class BidsService {
         'Supplier must be VERIFIED and listed under this RFQ\'s category to bid',
       );
     }
-    return this.prisma.bid.create({ data: { ...dto, supplierCompanyId } });
+
+    // A supplier has one live offer per RFQ. Bidding again while its bid is
+    // SUBMITTED or SHORTLISTED revises it: the old bid becomes SUPERSEDED (kept
+    // as history) and the new one, which starts SUBMITTED, points back to it.
+    // A shortlisted bid loses its shortlisting this way — the mine shortlisted
+    // a price that no longer stands. After a withdrawal or rejection there's no
+    // live bid, so a new one is simply a new bid.
+    return this.prisma.$transaction(async (tx) => {
+      // Lock the RFQ row: bids on one RFQ are placed one at a time, so two
+      // submissions can't both find no live bid and both create one. Holding
+      // the lock, re-check the RFQ — a bid accepted or the RFQ closed since
+      // the check above has committed by now.
+      const [locked] = await tx.$queryRaw<{ status: RfqStatus; deadline: Date }[]>`
+        SELECT "status", "deadline" FROM "Rfq" WHERE "id" = ${rfq.id} FOR UPDATE`;
+      if (!locked || !isBiddingOpen(locked)) {
+        throw new ConflictException('This RFQ is no longer accepting bids');
+      }
+
+      const live = await tx.bid.findFirst({
+        where: { rfqId: rfq.id, supplierCompanyId, status: { in: LIVE_BID_STATUSES } },
+        orderBy: { submittedAt: 'desc' },
+      });
+      if (live) {
+        // Conditional, because the mine reviews bids without the RFQ lock: if
+        // it accepted or rejected this one a moment ago, that decision stands.
+        const { count } = await tx.bid.updateMany({
+          where: { id: live.id, status: { in: LIVE_BID_STATUSES } },
+          data: { status: BidStatus.SUPERSEDED },
+        });
+        if (count !== 1) {
+          throw new ConflictException('Your bid was just reviewed by the mine — reload and try again');
+        }
+      }
+
+      return tx.bid.create({ data: { ...dto, supplierCompanyId, revisionOfId: live?.id } });
+    });
   }
 
   // Same sealed-bid rule as GET /rfqs/:id: the posting mine sees every bid,
-  // anyone else only their own.
+  // anyone else only their own. One entry per offer, earlier versions under
+  // `history`.
   async findByRfq(rfqId: string, requester: JwtPayload) {
     const rfq = await this.prisma.rfq.findUnique({
       where: { id: rfqId },
@@ -67,17 +106,18 @@ export class BidsService {
 
     const where = visibleBidsWhere(rfq, requester);
     if (!where) return [];
-    return this.prisma.bid.findMany({
+    const bids = await this.prisma.bid.findMany({
       where,
       include: { supplier: true },
       orderBy: { submittedAt: 'asc' },
     });
+    return withRevisionHistory(bids);
   }
 
   // Every bid the caller's company has placed, with enough of the RFQ to show
   // where it stands. `biddingOpen` comes from the same rule the board and the
   // bid check use, so the supplier sees "bidding closed" exactly when a new
-  // bid would be refused.
+  // bid would be refused. A revised bid is listed once, as its latest version.
   async findMine(supplierCompanyId: string) {
     const bids = await this.prisma.bid.findMany({
       where: { supplierCompanyId },
@@ -85,7 +125,7 @@ export class BidsService {
       orderBy: { submittedAt: 'desc' },
     });
     const now = new Date();
-    return bids.map((bid) => ({
+    return withRevisionHistory(bids).map((bid) => ({
       ...bid,
       rfq: { ...bid.rfq, biddingOpen: isBiddingOpen(bid.rfq, now) },
     }));

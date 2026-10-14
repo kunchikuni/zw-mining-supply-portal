@@ -8,7 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateRfqDto } from './dto/create-rfq.dto';
 import { biddingClosesAt, earliestBiddableDeadline, isBiddingOpen } from './bidding-window';
 import { seesEveryBid, visibleBidsWhere } from '../bids/bid-visibility';
-import { RfqStatus, VerificationStatus } from '@prisma/client';
+import { withRevisionHistory } from '../bids/bid-revisions';
+import { BidStatus, Prisma, RfqStatus, VerificationStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 
 // Where a mine can take an RFQ by hand. AWARDED is deliberately not a target:
@@ -19,6 +20,12 @@ const RFQ_TRANSITIONS: Record<RfqStatus, RfqStatus[]> = {
   [RfqStatus.CLOSED]: [RfqStatus.CANCELLED],
   [RfqStatus.AWARDED]: [],
   [RfqStatus.CANCELLED]: [],
+};
+
+// "N bids" counts offers, not versions: a revised bid's replaced versions
+// (SUPERSEDED) are left out, so revising doesn't change what anyone sees.
+const COUNT_OFFERS: Prisma.RfqCountOutputTypeSelect = {
+  bids: { where: { status: { not: BidStatus.SUPERSEDED } } },
 };
 
 @Injectable()
@@ -73,17 +80,20 @@ export class RfqsService {
   async findOne(id: string, requester?: JwtPayload | null) {
     const rfq = await this.prisma.rfq.findUnique({
       where: { id },
-      include: { mine: true, category: true, _count: { select: { bids: true } } },
+      include: { mine: true, category: true, _count: { select: COUNT_OFFERS } },
     });
     if (!rfq) throw new NotFoundException('RFQ not found');
 
+    // One entry per offer: a revised bid's earlier versions go under `history`.
     const where = visibleBidsWhere(rfq, requester);
     const bids = where
-      ? await this.prisma.bid.findMany({
-          where,
-          include: { supplier: true },
-          orderBy: { submittedAt: 'asc' },
-        })
+      ? withRevisionHistory(
+          await this.prisma.bid.findMany({
+            where,
+            include: { supplier: true },
+            orderBy: { submittedAt: 'asc' },
+          }),
+        )
       : [];
     if (!seesEveryBid(rfq, requester)) return this.withBiddingState({ ...rfq, bids });
 
@@ -108,7 +118,7 @@ export class RfqsService {
   async findMine(mineCompanyId: string) {
     const rfqs = await this.prisma.rfq.findMany({
       where: { mineCompanyId },
-      include: { category: true, _count: { select: { bids: true } } },
+      include: { category: true, _count: { select: COUNT_OFFERS } },
       orderBy: { createdAt: 'desc' },
     });
     const now = new Date();

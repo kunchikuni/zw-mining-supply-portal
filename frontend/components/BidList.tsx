@@ -1,4 +1,5 @@
 import type { Bid } from '@/lib/types';
+import { BidHistory } from './BidHistory';
 import { BidReviewActions } from './BidReviewActions';
 import { BidStatusBadge } from './BidStatusBadge';
 import { EmptyState } from './EmptyState';
@@ -34,6 +35,7 @@ export function BidList({
                 {bid.leadTimeDays ? ` · ${bid.leadTimeDays} day lead time` : ''}
               </p>
               {bid.notes && <p className="mt-2 text-sm leading-relaxed text-gray-600">{bid.notes}</p>}
+              <BidHistory history={bid.history} />
             </div>
             <BidStatusBadge status={bid.status} />
           </div>

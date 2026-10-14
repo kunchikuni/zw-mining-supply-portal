@@ -64,6 +64,9 @@ enum BidStatus {
   ACCEPTED
   REJECTED
   WITHDRAWN
+  // Replaced by the supplier's revised bid (the newer Bid's revisionOf points
+  // here). Final, and never set through PATCH /bids/:id/status.
+  SUPERSEDED
 }
 
 model Company {
@@ -193,6 +196,11 @@ model Bid {
   notes             String?
   status            BidStatus @default(SUBMITTED)
   submittedAt       DateTime  @default(now())
+  // The bid this one revised, if any. Unique, so a bid is replaced at most
+  // once and each offer's versions form a single chain.
+  revisionOfId      String?   @unique
+  revisionOf        Bid?      @relation("BidRevision", fields: [revisionOfId], references: [id])
+  revisedBy         Bid?      @relation("BidRevision")
 
   @@index([rfqId])
   @@index([supplierCompanyId])
