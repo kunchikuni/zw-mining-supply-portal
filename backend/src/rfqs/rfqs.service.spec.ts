@@ -13,7 +13,7 @@ function matches(row: Row, where: Row): boolean {
   if (where.status !== undefined) {
     if (typeof where.status === 'string' ? row.status !== where.status : !where.status.in.includes(row.status)) return false;
   }
-  for (const key of ['categoryId', 'province', 'mineCompanyId', 'rfqId', 'supplierCompanyId']) {
+  for (const key of ['categoryId', 'province', 'mineCompanyId', 'rfqId', 'supplierCompanyId', 'authorCompanyId']) {
     if (where[key] !== undefined && row[key] !== where[key]) return false;
   }
   if (where.deadline?.gte !== undefined && !(row.deadline >= where.deadline.gte)) return false;
@@ -21,8 +21,8 @@ function matches(row: Row, where: Row): boolean {
   return true;
 }
 
-function makePrisma(rfqs: Row[], bids: Row[] = []) {
-  const calls = { bidFindMany: 0 };
+function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
+  const calls = { bidFindMany: 0, ratingFindMany: 0 };
   const fake = {
     calls,
     rfq: {
@@ -52,6 +52,15 @@ function makePrisma(rfqs: Row[], bids: Row[] = []) {
           .filter((b) => matches(b, where))
           .sort((a, b) => a.submittedAt - b.submittedAt)
           .map((b) => ({ ...b, supplier: { id: b.supplierCompanyId } }));
+      },
+    },
+    rating: {
+      findMany: async ({ where, select, orderBy }: Row) => {
+        calls.ratingFindMany++;
+        return ratings
+          .filter((r) => matches(r, where))
+          .sort((a, b) => (orderBy?.createdAt === 'asc' ? a.createdAt - b.createdAt : 0))
+          .map((r) => (select ? Object.fromEntries(Object.keys(select).map((k) => [k, r[k]])) : r));
       },
     },
   };
@@ -295,6 +304,56 @@ describe('RfqsService.findOne — sealed bids', () => {
     expect((await view(null)).out.biddingOpen).toBe(true);
     const { service } = makePrisma([]);
     await expect(service.findOne('nope', null)).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('RfqsService.findOne — the ratings its mine gave', () => {
+  const bids = [
+    { id: 'b1', rfqId: 'r1', supplierCompanyId: 'sup1', status: 'ACCEPTED', submittedAt: D('2026-10-01') },
+    { id: 'b2', rfqId: 'r1', supplierCompanyId: 'sup2', status: 'ACCEPTED', submittedAt: D('2026-10-02') },
+  ];
+  const ratings = [
+    { id: 'g2', rfqId: 'r1', authorCompanyId: 'mine1', ratedCompanyId: 'sup2', score: 3, comment: null, createdAt: D('2026-10-06') },
+    { id: 'g1', rfqId: 'r1', authorCompanyId: 'mine1', ratedCompanyId: 'sup1', score: 5, comment: 'On time', createdAt: D('2026-10-05') },
+    // Left over from before ratings were locked down: not the posting mine's.
+    { id: 'x1', rfqId: 'r1', authorCompanyId: 'mine2', ratedCompanyId: 'sup1', score: 1, comment: null, createdAt: D('2026-10-04') },
+    { id: 'z1', rfqId: 'r2', authorCompanyId: 'mine1', ratedCompanyId: 'sup1', score: 4, comment: null, createdAt: D('2026-10-03') },
+  ];
+  const view = (requester: Parameters<RfqsService['findOne']>[1], status: RfqStatus = 'AWARDED') => {
+    const { fake, service } = makePrisma([rfq('r1', { status }), rfq('r2', { status: 'AWARDED' })], bids, ratings);
+    return service.findOne('r1', requester).then((out: Row) => ({ out, calls: fake.calls }));
+  };
+
+  it('gives the posting mine the ratings it gave on this RFQ, oldest first, and nothing else', async () => {
+    const { out } = await view(user('mine1', 'COMPANY_ADMIN'));
+    expect(ids(out.ratings)).toEqual(['g1', 'g2']);
+    expect(out.ratings[0]).toEqual({
+      id: 'g1',
+      ratedCompanyId: 'sup1',
+      score: 5,
+      comment: 'On time',
+      createdAt: D('2026-10-05'),
+    });
+  });
+
+  it('gives a PLATFORM_ADMIN them too', async () => {
+    expect(ids((await view(user('platform', 'PLATFORM_ADMIN'))).out.ratings)).toEqual(['g1', 'g2']);
+  });
+
+  it('never gives them to a rated supplier, another mine, a verifier or anonymous — and never queries', async () => {
+    for (const requester of [user('sup1'), user('mine2', 'COMPANY_ADMIN'), user('verifierco', 'VERIFIER'), null]) {
+      const { out, calls } = await view(requester);
+      expect(out).not.toHaveProperty('ratings');
+      expect(calls.ratingFindMany).toBe(0);
+    }
+  });
+
+  it("gives the owner an empty list without querying when the RFQ isn't awarded", async () => {
+    for (const status of ['OPEN', 'CLOSED', 'CANCELLED'] as RfqStatus[]) {
+      const { out, calls } = await view(user('mine1', 'COMPANY_ADMIN'), status);
+      expect(out.ratings).toEqual([]);
+      expect(calls.ratingFindMany).toBe(0);
+    }
   });
 });
 

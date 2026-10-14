@@ -89,7 +89,7 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 | `/companies` | `POST /` (returns the first-admin `inviteCode`), `GET /` (search/filter), `GET /:id`, `POST /:id/categories` (add), `PUT /:id/categories` (replace the whole listing), `POST /:id/invites` (company admin), `GET /verification-queue` (verifiers: companies in PENDING with a document summary), `PATCH /:id/verification-status` (verifiers; `VERIFIED` needs an approved document) |
 | `/categories` | `GET /`, `POST /` (platform admin only) |
 | `/documents` | `POST /` (also moves an unverified/rejected company to PENDING), `GET /?companyId=`, `GET /review-queue` (verifiers), `PATCH /:id/review` (verifiers; once per document; rejecting needs a `reviewNote`) |
-| `/rfqs` | `POST /`, `GET /` (still-biddable, filterable; optional auth also returns the caller's own expired RFQs), `GET /mine` (all of the caller's RFQs, any status), `GET /:id` (bids sealed: everyone gets the count, only the posting mine gets every bid, a bidder gets its own), `PATCH /:id/status` (owner: close or cancel) |
+| `/rfqs` | `POST /`, `GET /` (still-biddable, filterable; optional auth also returns the caller's own expired RFQs), `GET /mine` (all of the caller's RFQs, any status), `GET /:id` (bids sealed: everyone gets the count, only the posting mine gets every bid, a bidder gets its own; on an awarded RFQ the posting mine also gets the `ratings` it gave), `PATCH /:id/status` (owner: close or cancel) |
 | `/bids` | `POST /`, `GET /?rfqId=` (sign-in and `rfqId` required; same sealed rule), `GET /mine` (the caller's bids across every RFQ, each with its RFQ), `PATCH /:id/status` (owner: shortlist/accept/reject; bidder: withdraw — accept also awards the RFQ) |
 | `/ratings` | `POST /` (sign-in; the posting mine rates a supplier it accepted on an awarded RFQ, once), `GET /company/:id/average` (public aggregate) |
 | `/reporting` | `GET /local-content` — the compliance dashboard's data source, always for the caller's own company (taken from the token; there is no `mineCompanyId` parameter) |
@@ -102,8 +102,8 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 - **Component layering**:
   - **Layout**: `Navbar` (sticky, translucent, with a mobile menu and active-link state), `Footer`, `PageHeader` (eyebrow + serif title + lead + actions — the top of every page), `BrandMark`.
   - **Primitives**: `Button` / `ButtonLink`, `Badge`, `EmptyState`, `ErrorBanner`, `LoadingSkeleton` — no domain knowledge, reusable anywhere. Use `ButtonLink` for a link styled as a button; never put a `<Button>` inside a `<Link>` (invalid HTML, and it reads as two controls to screen readers).
-  - **Domain display**: `CompanyCard`, `RfqCard`, `VerificationBadge`, `RfqStatusBadge`, `BidList`, `DocumentList` — know about the data shape, render-only.
-  - **Domain forms**: `SearchFilters`, `BidForm`, `DocumentUploadForm` — own their local state and call the API client directly.
+  - **Domain display**: `CompanyCard`, `RfqCard`, `VerificationBadge`, `RfqStatusBadge`, `BidList`, `DocumentList`, `RatingStars`, `CompanyRatings`, `SupplierRatingsPanel` — know about the data shape, render-only.
+  - **Domain forms**: `SearchFilters`, `BidForm`, `DocumentUploadForm`, `RatingForm` — own their local state and call the API client directly.
 - **Visual language**: warm and quiet — an ivory page (`paper`), white hairline-bordered cards with soft shadows, a muted gold accent, and generous spacing. Headings use **Cormorant Garamond** (serif, with lining numerals so figures stay full height); everything else uses **DM Sans**. Both are loaded with `next/font`, so they're self-hosted at build time.
 - **Design tokens** (`tailwind.config.ts`): `copper` is the gold accent (primary buttons, links, focus, "pending" states); `chrome` is a muted green for verified / success / local content; `sand` is the deeper cream for the footer and hero panels; `gray` is overridden with Tailwind's warm `stone` scale, so every neutral sits naturally on the ivory background. Colour carries the same meaning in every badge site-wide.
 - **Shared classes** (`app/globals.css`): `page-title`, `page-lead`, `eyebrow` (small caps with a gold rule), `section-title`, `card-title`, `card`, `card-link`, `panel`, `label`, `input`, `hint`, `text-link`. Pages use these rather than repeating long class strings, which is what keeps the look consistent — change one, and every page follows.
@@ -143,7 +143,7 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 - **File upload**: `DocumentUploadForm` takes a pasted link, not a real upload — presigned S3 upload is Phase 2.
 - **No notifications**: RFQs don't yet fan out to matching suppliers (WhatsApp/SMS/email) — flagged in `RfqsService.create`.
 - **Bids stay sealed forever**: there's no post-award disclosure — once an RFQ is awarded, other bidders still can't see who won or at what price. Public-procurement practice often publishes the award; whether this portal should is a product call, and `bids/bid-visibility.ts` is the one place to add it.
-- **Ratings have no UI**: the endpoint is locked down, but no page lets a mine rate a supplier, and the company profile doesn't show ratings (the API returns them). Ratings are also final — there's no edit or delete, matching how accept/reject work.
+- **Ratings are final, and only on the profile**: a mine rates each supplier it hired from the awarded RFQ's page, and the supplier's profile shows the average and every comment — but a rating can't be edited or deleted (matching how accept/reject work), the directory cards and a mine's bid list don't show a bidder's rating yet, and "My RFQs" doesn't flag awarded RFQs still waiting for one.
 - **A supplier can bid more than once on the same RFQ**: `BidsService.create` doesn't check for an existing live bid, and the schema has no unique `(rfqId, supplierCompanyId)`. With sealed bids that reads like "revise my quote", but the mine sees every copy and there's no edit or "replace my bid". Decide whether to block a second bid, or turn it into an explicit revision.
 - **Self-declared categories**: verification is company-level, but a `VERIFIED` supplier can tick any category in the editor and immediately becomes eligible to bid on RFQs in it. Fine while verifiers review the company as a whole; revisit if category-specific evidence (e.g. safety certificates per category) matters.
 
@@ -176,6 +176,8 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
   - the RFQ is `AWARDED`, and the rated company has an `ACCEPTED` bid on it (a split award lets each accepted supplier be rated);
   - the score is a whole number 1–5 and any comment is at most 1000 characters;
   - this mine hasn't already rated this supplier for this RFQ — a database unique constraint on `(rfqId, authorCompanyId, ratedCompanyId)`, so concurrent requests can't slip past it.
+  
+  The posting mine rates from its awarded RFQ's page ("Rate your supplier", one form per accepted supplier, gone once rated). For that, `GET /rfqs/:id` returns the `ratings` the mine gave on the RFQ — only to whoever sees every bid (`seesEveryBid` in `bids/bid-visibility.ts`), since a rating says who won.
   
   `GET /companies/:id` now returns only each rating's score, comment and date. Because a rating can only exist for an accepted bid, exposing its `rfqId` and author would reveal who won which RFQ — exactly what sealed bids keep private.
 - **Bids are sealed.** The mine that posted an RFQ (or a `PLATFORM_ADMIN`) sees every bid on it; any other signed-in company sees only its own bids; anonymous visitors see none. Everyone sees the total count. One function, `bids/bid-visibility.ts`, defines this, and both endpoints that return bids on an RFQ go through it:
@@ -210,5 +212,4 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 - No direct pushes to `main` — all work happens on feature branches
 - Database is not touched directly outside of Prisma migrations
 - All changes go through review before merge
-#   z w - m i n i n g - s u p p l y - p o r t a l  
- 
+# zw-mining-supply-portal

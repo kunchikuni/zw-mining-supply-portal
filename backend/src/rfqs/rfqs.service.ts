@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRfqDto } from './dto/create-rfq.dto';
 import { biddingClosesAt, earliestBiddableDeadline, isBiddingOpen } from './bidding-window';
-import { visibleBidsWhere } from '../bids/bid-visibility';
+import { seesEveryBid, visibleBidsWhere } from '../bids/bid-visibility';
 import { RfqStatus, VerificationStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 
@@ -85,7 +85,21 @@ export class RfqsService {
           orderBy: { submittedAt: 'asc' },
         })
       : [];
-    return this.withBiddingState({ ...rfq, bids });
+    if (!seesEveryBid(rfq, requester)) return this.withBiddingState({ ...rfq, bids });
+
+    // The ratings this RFQ's mine gave its suppliers, so the owner's page can
+    // show who's been rated and offer the form for who hasn't. A rating exists
+    // only for an accepted bid, so it reveals who won: only those who see
+    // every bid get it. Ratings need an AWARDED RFQ, so nothing else is queried.
+    const ratings =
+      rfq.status === RfqStatus.AWARDED
+        ? await this.prisma.rating.findMany({
+            where: { rfqId: rfq.id, authorCompanyId: rfq.mineCompanyId },
+            select: { id: true, ratedCompanyId: true, score: true, comment: true, createdAt: true },
+            orderBy: { createdAt: 'asc' },
+          })
+        : [];
+    return this.withBiddingState({ ...rfq, bids, ratings });
   }
 
   // Everything the posting company has put out, whatever its status — the
