@@ -10,6 +10,7 @@ import type {
   DocumentType,
   LocalContentSummary,
   Rfq,
+  RfqRating,
   RfqStatus,
   VerificationQueueCompany,
   VerificationStatus,
@@ -268,6 +269,16 @@ export function setBidStatus(id: string, status: BidStatus, token: string) {
     body: JSON.stringify({ status }),
     token,
   });
+}
+
+// ---- Ratings ----
+// The posting mine rates a supplier whose bid it accepted on an awarded RFQ,
+// once per supplier. The author is the caller's company, from the token.
+export function createRating(
+  token: string,
+  data: { rfqId: string; ratedCompanyId: string; score: number; comment?: string },
+) {
+  return request<RfqRating>('/ratings', { method: 'POST', body: JSON.stringify(data), token });
 }
 
 // ---- Reporting ----

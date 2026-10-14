@@ -44,6 +44,23 @@ export interface Company {
   createdAt: string;
   categories?: CompanyCategory[];
   documents?: DocumentRecord[];
+  // On GET /companies/:id, newest first.
+  ratingsReceived?: ReceivedRating[];
+}
+
+// A rating as a company profile shows it: score, comment and date only. The
+// author and the RFQ are left out on purpose — together they'd say who won
+// which RFQ, which sealed bids keep private.
+export interface ReceivedRating {
+  id: string;
+  score: number;
+  comment?: string | null;
+  createdAt: string;
+}
+
+// A rating the posting mine gave a supplier on one of its own RFQs.
+export interface RfqRating extends ReceivedRating {
+  ratedCompanyId: string;
 }
 
 // What POST /companies returns: the company plus the one-time code that
@@ -100,6 +117,10 @@ export interface Rfq {
   bids?: Bid[];
   // Total bids on the RFQ, visible to everyone. On GET /rfqs/:id and /rfqs/mine.
   _count?: { bids: number };
+  // On GET /rfqs/:id, only for whoever sees every bid (the posting mine or a
+  // platform admin): the ratings the mine has given its accepted suppliers.
+  // Absent for everyone else, because a rating reveals who won.
+  ratings?: RfqRating[];
 }
 
 export interface Bid {

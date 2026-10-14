@@ -29,6 +29,11 @@ export function formatDate(iso: string) {
   });
 }
 
+// A score or an average of scores: "4", or "4.3".
+export function formatScore(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 export function formatMonth(monthKey: string) {
   const [year, month] = monthKey.split('-').map(Number);
   return new Date(year, month - 1, 1).toLocaleDateString('en-US', {

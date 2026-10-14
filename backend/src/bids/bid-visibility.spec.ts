@@ -1,4 +1,4 @@
-import { visibleBidsWhere } from './bid-visibility';
+import { seesEveryBid, visibleBidsWhere } from './bid-visibility';
 import { user } from '../test-utils/users';
 
 // Sealed bids: the single rule behind GET /rfqs/:id and GET /bids?rfqId=.
@@ -28,5 +28,23 @@ describe('visibleBidsWhere', () => {
   it('gives anonymous callers nothing — null, so the query can be skipped', () => {
     expect(visibleBidsWhere(rfq, null)).toBeNull();
     expect(visibleBidsWhere(rfq, undefined)).toBeNull();
+  });
+});
+
+// The same rule, for anything else that would reveal who won (e.g. ratings).
+describe('seesEveryBid', () => {
+  const rfq = { mineCompanyId: 'mine1' };
+
+  it('is true for the posting mine and a PLATFORM_ADMIN', () => {
+    expect(seesEveryBid(rfq, user('mine1', 'COMPANY_MEMBER'))).toBe(true);
+    expect(seesEveryBid(rfq, user('platform', 'PLATFORM_ADMIN'))).toBe(true);
+  });
+
+  it('is false for a supplier, another mine, a verifier and anonymous callers', () => {
+    expect(seesEveryBid(rfq, user('sup1'))).toBe(false);
+    expect(seesEveryBid(rfq, user('mine2', 'COMPANY_ADMIN'))).toBe(false);
+    expect(seesEveryBid(rfq, user('verifierco', 'VERIFIER'))).toBe(false);
+    expect(seesEveryBid(rfq, null)).toBe(false);
+    expect(seesEveryBid(rfq, undefined)).toBe(false);
   });
 });

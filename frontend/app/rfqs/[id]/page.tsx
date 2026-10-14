@@ -10,6 +10,7 @@ import { BidList } from '@/components/BidList';
 import { BidForm } from '@/components/BidForm';
 import { RfqOwnerPanel } from '@/components/RfqOwnerPanel';
 import { SealedBidSummary } from '@/components/SealedBidSummary';
+import { SupplierRatingsPanel } from '@/components/SupplierRatingsPanel';
 import { CardSkeleton } from '@/components/LoadingSkeleton';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { PageHeader } from '@/components/PageHeader';
@@ -137,6 +138,11 @@ export default function RfqDetailPage() {
         </div>
         <div className="space-y-6">
           {isOwner && <RfqOwnerPanel rfq={rfq} onChanged={refresh} />}
+          {/* Only the posting mine can rate (POST /ratings enforces it), so a
+              platform admin sees the bids but not this panel. */}
+          {isOwner && rfq.status === 'AWARDED' && (
+            <SupplierRatingsPanel rfq={rfq} onChanged={refresh} />
+          )}
           {!isOwner && !rfq.biddingOpen && (
             <p
               role="status"

@@ -14,8 +14,16 @@ export function visibleBidsWhere(
   requester: { companyId: string; role: string } | null | undefined,
 ): Prisma.BidWhereInput | null {
   if (!requester) return null;
-  if (requester.companyId === rfq.mineCompanyId || requester.role === 'PLATFORM_ADMIN') {
-    return { rfqId: rfq.id };
-  }
+  if (seesEveryBid(rfq, requester)) return { rfqId: rfq.id };
   return { rfqId: rfq.id, supplierCompanyId: requester.companyId };
+}
+
+// The first rule above on its own. Anything else that would reveal who won an
+// RFQ — like the ratings its mine gave — is limited to the same people.
+export function seesEveryBid(
+  rfq: { mineCompanyId: string },
+  requester: { companyId: string; role: string } | null | undefined,
+): boolean {
+  if (!requester) return false;
+  return requester.companyId === rfq.mineCompanyId || requester.role === 'PLATFORM_ADMIN';
 }

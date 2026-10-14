@@ -11,6 +11,7 @@ import { CategoryEditor } from '@/components/CategoryEditor';
 import { InviteForm } from '@/components/InviteForm';
 import { DocumentList } from '@/components/DocumentList';
 import { DocumentUploadForm } from '@/components/DocumentUploadForm';
+import { CompanyRatings } from '@/components/CompanyRatings';
 import { CardSkeleton } from '@/components/LoadingSkeleton';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { PageHeader } from '@/components/PageHeader';
@@ -73,6 +74,17 @@ export default function CompanyProfilePage() {
                 {company.categories.map((c) => (
                   <Badge key={c.categoryId}>{c.category.name}</Badge>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Suppliers always get the section (an empty state says how ratings
+              arrive); anyone else only if they've somehow been rated. */}
+          {(company.type === 'SUPPLIER' || (company.ratingsReceived?.length ?? 0) > 0) && (
+            <div>
+              <h2 className="section-title">Ratings</h2>
+              <div className="mt-4">
+                <CompanyRatings ratings={company.ratingsReceived ?? []} />
               </div>
             </div>
           )}

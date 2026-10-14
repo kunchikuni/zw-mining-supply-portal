@@ -18,6 +18,15 @@ export const DOC_STATUS_TONE: Record<DocumentStatus, 'neutral' | 'copper' | 'chr
   EXPIRED: 'danger',
 };
 
+// What each rating score means, for the score picker and screen readers.
+export const SCORE_LABELS: Record<number, string> = {
+  1: 'Poor',
+  2: 'Fair',
+  3: 'Good',
+  4: 'Very good',
+  5: 'Excellent',
+};
+
 // "PENDING" -> "Pending"
 export function sentenceCase(value: string) {
   return value.charAt(0) + value.slice(1).toLowerCase();
