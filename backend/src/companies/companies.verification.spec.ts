@@ -15,12 +15,14 @@ function makePrisma(companies: Row[], documents: Row[] = []) {
       update: async ({ where, data }: Row) => Object.assign(companies.find((c) => c.id === where.id)!, data),
       findMany: async (args: Row) => {
         calls.findMany = args;
-        return [];
+        return calls.queueRows ?? [];
       },
     },
     document: {
-      count: async ({ where }: Row) =>
-        documents.filter((d) => d.companyId === where.companyId && d.status === where.status).length,
+      findMany: async ({ where }: Row) =>
+        documents
+          .filter((d) => d.companyId === where.companyId)
+          .map((d) => ({ docType: 'TAX_CLEARANCE', expiresAt: null, reviewedBy: null, ...d })),
     },
   };
   return { fake, service: new CompaniesService(asPrisma<PrismaService>(fake)) };
@@ -47,6 +49,54 @@ describe('CompaniesService.setVerificationStatus', () => {
     await expect(service.setVerificationStatus('sup1', 'VERIFIED')).rejects.toMatchObject({ status: 409 });
   });
 
+  describe('expired documents', () => {
+    const D = (iso: string) => new Date(iso);
+    const approved = (over: Row = {}): Row => ({ companyId: 'sup1', status: 'APPROVED', reviewedBy: 'v', ...over });
+
+    it("refuses VERIFIED while an approved type has lapsed with no renewal, naming it (409)", async () => {
+      const rows = [supplier()];
+      const docs = [
+        approved({ docType: 'COMPANY_REGISTRATION' }),
+        approved({ docType: 'TAX_CLEARANCE', status: 'EXPIRED', expiresAt: D('2001-01-01') }),
+      ];
+      const { service } = makePrisma(rows, docs);
+      await expect(service.setVerificationStatus('sup1', 'VERIFIED')).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining('Tax clearance has expired'),
+      });
+      expect(rows[0].verificationStatus).toBe('PENDING');
+    });
+
+    it('counts an APPROVED document past its date as lapsed even before the sweep marks it', async () => {
+      const docs = [approved({ docType: 'COMPANY_REGISTRATION' }), approved({ expiresAt: D('2001-01-01') })];
+      const { service } = makePrisma([supplier()], docs);
+      await expect(service.setVerificationStatus('sup1', 'VERIFIED')).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('allows VERIFIED once the renewal is approved', async () => {
+      const docs = [
+        approved({ status: 'EXPIRED', expiresAt: D('2001-01-01') }),
+        approved({ expiresAt: D('2099-01-01') }),
+      ];
+      const { service } = makePrisma([supplier()], docs);
+      await expect(service.setVerificationStatus('sup1', 'VERIFIED')).resolves.toMatchObject({ verificationStatus: 'VERIFIED' });
+    });
+
+    it("doesn't count a document that expired while pending against the company", async () => {
+      const docs = [approved({ docType: 'COMPANY_REGISTRATION' }), { companyId: 'sup1', status: 'EXPIRED', expiresAt: D('2001-01-01') }];
+      const { service } = makePrisma([supplier()], docs);
+      await expect(service.setVerificationStatus('sup1', 'VERIFIED')).resolves.toMatchObject({ verificationStatus: 'VERIFIED' });
+    });
+
+    it('needs a current approval: an approved-but-lapsed document alone is not enough (409)', async () => {
+      const { service } = makePrisma([supplier()], [approved({ expiresAt: D('2001-01-01') })]);
+      await expect(service.setVerificationStatus('sup1', 'VERIFIED')).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining('Approve at least one'),
+      });
+    });
+  });
+
   it.each(['REJECTED', 'PENDING', 'UNVERIFIED'])('always allows %s, documents or not', async (status) => {
     const rows = [supplier({ verificationStatus: 'VERIFIED' })];
     const { service } = makePrisma(rows);
@@ -70,7 +120,30 @@ describe('CompaniesService.verificationQueue', () => {
     expect(args.where).toEqual({ verificationStatus: 'PENDING', type: { not: 'PLATFORM' } });
     expect(args.orderBy).toEqual({ updatedAt: 'asc' });
     // A summary only — no file links in the queue payload.
-    expect(Object.keys(args.select.documents.select).sort()).toEqual(['docType', 'id', 'status', 'uploadedAt']);
+    expect(Object.keys(args.select.documents.select).sort()).toEqual([
+      'docType',
+      'expiresAt',
+      'id',
+      'reviewedBy',
+      'status',
+      'uploadedAt',
+    ]);
+  });
+
+  it('adds lapsedDocTypes to each company and drops reviewedBy from its documents', async () => {
+    const { fake, service } = makePrisma([]);
+    fake.calls.queueRows = [
+      {
+        id: 'sup1',
+        documents: [
+          { id: 'a', docType: 'TAX_CLEARANCE', status: 'EXPIRED', expiresAt: new Date('2001-01-01'), reviewedBy: 'v' },
+          { id: 'b', docType: 'TAX_CLEARANCE', status: 'PENDING', expiresAt: new Date('2099-01-01'), reviewedBy: null },
+        ],
+      },
+    ];
+    const [entry] = await service.verificationQueue();
+    expect(entry.lapsedDocTypes).toEqual(['TAX_CLEARANCE']);
+    expect(entry.documents.map((d: Row) => Object.keys(d).includes('reviewedBy'))).toEqual([false, false]);
   });
 });
 

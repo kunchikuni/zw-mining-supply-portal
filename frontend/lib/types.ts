@@ -85,6 +85,10 @@ export interface DocumentRecord {
   fileUrl: string;
   status: DocumentStatus;
   uploadedAt: string;
+  // A calendar date (stored as midnight UTC): valid through that day in
+  // Harare. Required for tax clearance, NSSA and PRAZ; never set on a company
+  // registration. Confirmed by the verifier on approval.
+  expiresAt?: string | null;
   reviewNote?: string | null;
   reviewedBy?: string | null;
   // Only on the verifier's review queue.
@@ -100,7 +104,10 @@ export interface VerificationQueueCompany {
   town?: string | null;
   verificationStatus: VerificationStatus;
   updatedAt: string;
-  documents: Pick<DocumentRecord, 'id' | 'docType' | 'status' | 'uploadedAt'>[];
+  documents: Pick<DocumentRecord, 'id' | 'docType' | 'status' | 'uploadedAt' | 'expiresAt'>[];
+  // Types it had approved that have lapsed with no approved renewal: the
+  // server won't verify it until these are renewed and approved.
+  lapsedDocTypes: DocumentType[];
 }
 
 export interface Rfq {

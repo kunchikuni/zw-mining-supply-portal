@@ -12,6 +12,7 @@ import { InviteForm } from '@/components/InviteForm';
 import { DocumentList } from '@/components/DocumentList';
 import { DocumentUploadForm } from '@/components/DocumentUploadForm';
 import { CompanyRatings } from '@/components/CompanyRatings';
+import { ExpiryNotice } from '@/components/ExpiryNotice';
 import { CardSkeleton } from '@/components/LoadingSkeleton';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { PageHeader } from '@/components/PageHeader';
@@ -59,6 +60,8 @@ export default function CompanyProfilePage() {
           </div>
         }
       />
+
+      {isOwner && <ExpiryNotice company={company} />}
 
       {/* Owners get their editing panels in a side column; visitors get one column. */}
       <div className={isOwner ? 'grid items-start gap-10 lg:grid-cols-[1.6fr_1fr]' : 'space-y-10'}>

@@ -5,14 +5,17 @@ import Link from 'next/link';
 import { setVerificationStatus, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { VerificationQueueCompany, VerificationStatus } from '@/lib/types';
+import { DOC_TYPE_LABELS } from '@/lib/labels';
+import { isLapsed } from '@/lib/expiry';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { ConfirmAction } from './ConfirmAction';
 import { ErrorBanner } from './ErrorBanner';
 
 // One company waiting on a verification decision, with a summary of where its
-// documents stand. "Mark verified" needs at least one approved document — the
-// server enforces that too; the button just doesn't offer what it would refuse.
+// documents stand. "Mark verified" needs at least one current approved
+// document and nothing lapsed without an approved renewal — the server
+// enforces both; the button just doesn't offer what it would refuse.
 export function CompanyDecisionRow({
   company,
   onChanged,
@@ -24,9 +27,19 @@ export function CompanyDecisionRow({
   const [error, setError] = useState<string | null>(null);
 
   const count = (status: string) => company.documents.filter((d) => d.status === status).length;
-  const approved = count('APPROVED');
-  const pending = count('PENDING');
+  const approved = company.documents.filter((d) => d.status === 'APPROVED' && !isLapsed(d.expiresAt)).length;
+  // A pending document past its expiry date can't be approved, and has left
+  // the review queue, so it isn't counted as awaiting review.
+  const pending = company.documents.filter((d) => d.status === 'PENDING' && !isLapsed(d.expiresAt)).length;
   const rejected = count('REJECTED');
+  const lapsed = company.lapsedDocTypes ?? [];
+  const lapsedNames = lapsed.map((t) => DOC_TYPE_LABELS[t].toLowerCase()).join(' and ');
+  const blocker =
+    approved === 0
+      ? 'Approve at least one of its documents before marking it verified.'
+      : lapsed.length > 0
+        ? `Its ${lapsedNames} has expired — approve a current one before marking it verified.`
+        : null;
 
   async function decide(status: VerificationStatus) {
     setError(null);
@@ -60,11 +73,16 @@ export function CompanyDecisionRow({
             {approved > 0 && <Badge tone="chrome">{approved} approved</Badge>}
             {pending > 0 && <Badge tone="copper">{pending} awaiting review</Badge>}
             {rejected > 0 && <Badge tone="danger">{rejected} rejected</Badge>}
+            {lapsed.map((t) => (
+              <Badge key={t} tone="danger">
+                {DOC_TYPE_LABELS[t]} expired
+              </Badge>
+            ))}
             {company.documents.length === 0 && <Badge>No documents</Badge>}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {approved > 0 ? (
+          {!blocker ? (
             <ConfirmAction
               label="Mark verified"
               prompt="Verify this company? It can then bid on RFQs in its categories."
@@ -73,7 +91,7 @@ export function CompanyDecisionRow({
               onConfirm={() => decide('VERIFIED')}
             />
           ) : (
-            <Button size="sm" disabled title="Approve at least one of its documents first">
+            <Button size="sm" disabled title={blocker}>
               Mark verified
             </Button>
           )}
@@ -86,9 +104,7 @@ export function CompanyDecisionRow({
           />
         </div>
       </div>
-      {approved === 0 && (
-        <p className="hint">Approve at least one of its documents before marking it verified.</p>
-      )}
+      {blocker && <p className="hint">{blocker}</p>}
       {error && (
         <div className="mt-3">
           <ErrorBanner message={error} />

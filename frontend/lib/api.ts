@@ -142,9 +142,10 @@ export function getCategories() {
 }
 
 // ---- Documents ----
+// `expiresAt` (YYYY-MM-DD) is required for tax clearance, NSSA and PRAZ.
 export function registerDocument(
   token: string,
-  data: { docType: DocumentType; fileUrl: string },
+  data: { docType: DocumentType; fileUrl: string; expiresAt?: string },
 ) {
   return request<DocumentRecord>('/documents', {
     method: 'POST',
@@ -159,10 +160,11 @@ export function getDocumentReviewQueue(token: string) {
   return request<DocumentRecord[]>('/documents/review-queue', { token });
 }
 
-// A document is reviewed once. Rejecting requires a note.
+// A document is reviewed once. Rejecting requires a note; approving takes the
+// expiry date as the verifier read it off the document.
 export function reviewDocument(
   id: string,
-  decision: { status: 'APPROVED' | 'REJECTED'; reviewNote?: string },
+  decision: { status: 'APPROVED' | 'REJECTED'; reviewNote?: string; expiresAt?: string },
   token: string,
 ) {
   return request<DocumentRecord>(`/documents/${id}/review`, {
@@ -177,7 +179,8 @@ export function getVerificationQueue(token: string) {
   return request<VerificationQueueCompany[]>('/companies/verification-queue', { token });
 }
 
-// VERIFIED needs at least one approved document; the server enforces it.
+// VERIFIED needs a current approved document and nothing lapsed without an
+// approved renewal; the server enforces it.
 export function setVerificationStatus(companyId: string, status: VerificationStatus, token: string) {
   return request<Company>(`/companies/${companyId}/verification-status`, {
     method: 'PATCH',

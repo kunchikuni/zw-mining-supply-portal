@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsDateString, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { DocumentStatus } from '@prisma/client';
 
 // A verifier's decision on one document. Only the two outcomes are valid
@@ -13,4 +13,10 @@ export class ReviewDocumentDto {
   @IsString()
   @MaxLength(1000)
   reviewNote?: string;
+
+  // When approving: the expiry date as the verifier read it off the document,
+  // which replaces the one the company typed. Omitted means "as entered".
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string;
 }
