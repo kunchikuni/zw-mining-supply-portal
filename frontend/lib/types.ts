@@ -166,6 +166,26 @@ export interface AuthUser {
   role: string;
 }
 
+export type StaffRole = 'VERIFIER' | 'PLATFORM_ADMIN';
+
+// A portal staff account as the Staff page sees it (GET /staff).
+export interface StaffMember {
+  id: string;
+  email: string;
+  fullName: string;
+  role: StaffRole;
+  createdAt: string;
+  disabledAt: string | null;
+  // Still on a temporary password an admin issued.
+  mustChangePassword: boolean;
+}
+
+// A new account or a reset: the temporary password is returned this once.
+export interface IssuedPassword {
+  user: StaffMember;
+  temporaryPassword: string;
+}
+
 export interface CategoryBreakdown {
   categoryId: string;
   categoryName: string;

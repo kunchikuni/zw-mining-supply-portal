@@ -36,6 +36,9 @@ const STAFF_LINKS: NavLink[] = [
   { href: '/verify', label: 'Verification', isActive: (p) => p.startsWith('/verify') },
 ];
 
+// Platform admins also manage the staff accounts themselves.
+const ADMIN_LINKS: NavLink[] = [{ href: '/staff', label: 'Staff', isActive: (p) => p.startsWith('/staff') }];
+
 export function Navbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname() ?? '/';
@@ -47,7 +50,11 @@ export function Navbar() {
   }, [pathname]);
 
   const staff = isStaffRole(user?.role);
-  const links = !user ? PUBLIC_LINKS : staff ? [...PUBLIC_LINKS, ...STAFF_LINKS] : [...PUBLIC_LINKS, ...SIGNED_IN_LINKS];
+  const links = !user
+    ? PUBLIC_LINKS
+    : staff
+      ? [...PUBLIC_LINKS, ...STAFF_LINKS, ...(user.role === 'PLATFORM_ADMIN' ? ADMIN_LINKS : [])]
+      : [...PUBLIC_LINKS, ...SIGNED_IN_LINKS];
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200/70 bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/75">
@@ -90,6 +97,13 @@ export function Navbar() {
                   Post an RFQ
                 </ButtonLink>
               )}
+              <Link
+                href="/account/password"
+                aria-current={pathname.startsWith('/account') ? 'page' : undefined}
+                className="px-2 text-[12px] font-medium uppercase tracking-[0.14em] text-gray-600 transition hover:text-ink"
+              >
+                Password
+              </Link>
               <Button variant="ghost" size="sm" onClick={logout}>
                 Sign out
               </Button>
@@ -153,6 +167,9 @@ export function Navbar() {
                       Post an RFQ
                     </ButtonLink>
                   )}
+                  <ButtonLink href="/account/password" variant="secondary" size="sm">
+                    Change password
+                  </ButtonLink>
                   <Button variant="secondary" size="sm" onClick={logout}>
                     Sign out
                   </Button>

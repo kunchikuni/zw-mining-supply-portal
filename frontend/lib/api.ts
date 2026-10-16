@@ -8,15 +8,23 @@ import type {
   CreatedCompany,
   DocumentRecord,
   DocumentType,
+  IssuedPassword,
   LocalContentSummary,
   Rfq,
   RfqRating,
   RfqStatus,
+  StaffMember,
+  StaffRole,
   VerificationQueueCompany,
   VerificationStatus,
 } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+// Fired when the server refuses the stored token — the account was disabled,
+// its password changed elsewhere, or the token expired. AuthProvider listens
+// and signs out, so the app stops acting as someone it no longer is.
+export const SESSION_ENDED_EVENT = 'zwsp:session-ended';
 
 export class ApiError extends Error {
   status: number;
@@ -41,6 +49,9 @@ async function request<T>(
   });
 
   if (!res.ok) {
+    if (res.status === 401 && token && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
+    }
     let message = res.statusText;
     try {
       const body = await res.json();
@@ -56,11 +67,45 @@ async function request<T>(
 }
 
 // ---- Auth ----
+// `mustChangePassword`: the account is on a temporary password an admin
+// issued; the app sends the user to choose their own.
 export function login(email: string, password: string) {
-  return request<{ accessToken: string }>('/auth/login', {
+  return request<{ accessToken: string; mustChangePassword?: boolean }>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
+}
+
+// Signs out every other session; returns a fresh token for this one.
+export function changePassword(token: string, data: { currentPassword: string; newPassword: string }) {
+  return request<{ accessToken: string }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    token,
+  });
+}
+
+// ---- Staff (PLATFORM_ADMIN only) ----
+export function getStaff(token: string) {
+  return request<StaffMember[]>('/staff', { token });
+}
+
+export function createStaff(token: string, data: { email: string; fullName: string; role: StaffRole }) {
+  return request<IssuedPassword>('/staff', { method: 'POST', body: JSON.stringify(data), token });
+}
+
+// Disabling signs the account out on its next request; enabling restores it.
+export function setStaffDisabled(id: string, disabled: boolean, token: string) {
+  return request<StaffMember>(`/staff/${id}/disabled`, {
+    method: 'PATCH',
+    body: JSON.stringify({ disabled }),
+    token,
+  });
+}
+
+// A new temporary password; the account's existing sessions end.
+export function resetStaffPassword(id: string, token: string) {
+  return request<IssuedPassword>(`/staff/${id}/reset-password`, { method: 'POST', token });
 }
 
 // `inviteCode` is what ties the new user to a company: the one returned by

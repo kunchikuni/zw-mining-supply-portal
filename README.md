@@ -51,12 +51,15 @@ zw-supplier-portal/
 │       ├── documents/           # compliance doc intake + review queue
 │       ├── rfqs/                # mine-posted requests for quote
 │       ├── bids/                # supplier bids, eligibility-gated
-│       └── ratings/             # post-job performance scores
+│       ├── ratings/             # post-job performance scores
+│       └── staff/               # platform admins manage portal staff accounts
 └── frontend/
     ├── app/
     │   ├── layout.tsx           # AuthProvider + Navbar wrapper
     │   ├── page.tsx             # home
     │   ├── login/page.tsx
+    │   ├── account/password/    # change your password (also first sign-in on a temporary one)
+    │   ├── staff/page.tsx       # platform admins: add, disable, reset staff
     │   ├── register/page.tsx    # 2-step: create company -> create user
     │   ├── companies/
     │   │   ├── page.tsx         # directory search
@@ -85,7 +88,8 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 
 | Resource | Endpoints |
 |---|---|
-| `/auth` | `POST /register` (needs an `inviteCode`), `POST /login` |
+| `/auth` | `POST /register` (needs an `inviteCode`), `POST /login` (refuses a disabled account; says if the password is temporary), `POST /change-password` (signed in; needs the current password; signs out other sessions) |
+| `/staff` | Platform admins only: `GET /`, `POST /` (returns a one-time temporary password), `PATCH /:id/disabled`, `POST /:id/reset-password` — never your own account |
 | `/companies` | `POST /` (returns the first-admin `inviteCode`), `GET /` (search/filter), `GET /:id`, `POST /:id/categories` (add), `PUT /:id/categories` (replace the whole listing), `POST /:id/invites` (company admin), `GET /verification-queue` (verifiers: companies in PENDING with a document summary and `lapsedDocTypes`), `PATCH /:id/verification-status` (verifiers; `VERIFIED` needs a current approved document and nothing lapsed without an approved renewal) |
 | `/categories` | `GET /`, `POST /` (platform admin only) |
 | `/documents` | `POST /` (also moves an unverified/rejected company to PENDING; `expiresAt` required for tax clearance, NSSA and PRAZ, refused on a company registration or if already past), `GET /?companyId=`, `GET /review-queue` (verifiers), `PATCH /:id/review` (verifiers; once per document; rejecting needs a `reviewNote`; approving confirms `expiresAt`) |
@@ -119,7 +123,7 @@ cp .env.example .env       # set DATABASE_URL and JWT_SECRET
 npm install
 npx prisma migrate dev --name init
 npm run seed
-npm run create:staff -- --email you@example.com --name "Your Name"   # first verifier account (prints a one-time password)
+npm run create:staff -- --email you@example.com --name "Your Name" --role PLATFORM_ADMIN   # first admin (prints a temporary password); add other staff on the Staff page
 npm run start:dev          # http://localhost:3000
 
 # Frontend (separate terminal)
@@ -131,8 +135,8 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 
 ## Known gaps / next honest steps
 
-- **Auth hardening**: JWT is still in `localStorage` (XSS-readable). Production should move to an httpOnly cookie + refresh-token pair. Route-level guards and ownership checks are now in place (see "Auth & authorization" below) — this remaining item is about the token's storage, not its enforcement.
-- **Invite management is minimal**: admins can mint a one-time invite (`POST /companies/:id/invites`) but can't list pending ones, revoke one, or remove a user, and there's no way to hand over or add a second `COMPANY_ADMIN`. Staff accounts are created with `npm run create:staff`; there is no UI for managing them (listing, disabling, resetting a password).
+- **Auth hardening**: JWT is still in `localStorage` (XSS-readable). Production should move to an httpOnly cookie + refresh-token pair. Route-level guards and ownership checks are in place, and the account behind a token is re-checked on every request (see "Auth & authorization" below) — this remaining item is about the token's storage, not its enforcement. There's also no rate limiting on sign-in.
+- **Invite management is minimal**: admins can mint a one-time invite (`POST /companies/:id/invites`) but can't list pending ones, revoke one, or remove a user, and there's no way to hand over or add a second `COMPANY_ADMIN`. Staff accounts are managed on the Staff page, but a staff member's role can't be changed there, and company users can't be disabled — the mechanism (`User.disabledAt`) exists, only staff are reachable.
 - **Verification decisions are one-way in the UI**: a reviewed document can't be re-reviewed (by design), and the workspace offers verify/reject only for companies in `PENDING` — revoking an already-verified company means calling `PATCH /companies/:id/verification-status` directly. There's no audit history beyond `reviewedBy` / `reviewNote` on each document, and nobody is notified of a decision.
 - **Expiry warnings are on-screen only**: a company sees "expires in N days" on its own profile from 30 days out, but nobody is emailed — reminders belong with notifications. The expiry sweep runs inside the API process (at startup and at the top of every hour); with several instances each runs it, which is harmless because every write is conditional, but a single scheduled job would be tidier at scale.
 - **Review decisions are final and silent**: accepting or rejecting a bid and cancelling an RFQ can't be undone (the server enforces it — accepted bids are what the local-content dashboard totals), a closed RFQ can't be reopened, and nobody is told. A supplier can see what became of a bid on "My bids", but only by looking — nothing tells them. The push side is the notifications gap below; undo/reopen is a product decision about how much the dashboard numbers should be allowed to move.
@@ -149,10 +153,12 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 
 ## Auth & authorization
 
-- `JwtStrategy` + `JwtAuthGuard` — any route with `@UseGuards(JwtAuthGuard)` requires a valid bearer token; `req.user` is the decoded `{ sub, email, companyId, role }` payload.
+- `JwtStrategy` + `JwtAuthGuard` — any route with `@UseGuards(JwtAuthGuard)` requires a valid bearer token, and `JwtStrategy` re-reads the account on every request: a disabled account, or a token issued before the account's last password change or reset (`User.tokensValidAfter`), is refused (401), and `req.user`'s `{ sub, email, companyId, role }` comes from the database, so a role change applies at once. The frontend signs out whenever the API refuses its token.
 - `JwtOptionalAuthGuard` — decodes the token if present but never rejects; used on `GET /companies/:id` so the directory stays public while owners/verifiers get a fuller view.
 - `RolesGuard` + `@Roles(...)` — restricts a route to specific `UserRole` values. Used to lock verification (`PATCH /companies/:id/verification-status`, `GET /companies/verification-queue`) and document review (`GET /documents/review-queue`, `PATCH /documents/:id/review`) to `VERIFIER`/`PLATFORM_ADMIN`, and `POST /categories` to `PLATFORM_ADMIN`.
 - **Verification is done by portal staff, in the app.** Staff (`VERIFIER` / `PLATFORM_ADMIN`) are created with `npm run create:staff -- --email … --name … [--role PLATFORM_ADMIN] [--password-file <path>]` and belong to the portal's own company of type `PLATFORM` — a type that can't be chosen at signup (400), never appears in the directory, and can't be used as a directory filter. Signing in takes staff to `/verify`, and their nav shows Verification instead of the mine/supplier links.
+  - **Platform admins manage staff on the Staff page** (`/staff`, `GET/POST/PATCH /staff`): add a verifier or admin (a temporary password is shown once), disable or re-enable an account (it's signed out on its next request and can't sign in), and reset a password (a new temporary one; existing sessions end). An admin can't disable or reset their own account — which also means the last active admin can never be locked out. Only accounts in the `PLATFORM` company are reachable (404 otherwise). The first admin comes from `npm run create:staff -- --role PLATFORM_ADMIN`.
+  - **Everyone can change their own password** (`/account/password`, `POST /auth/change-password`): it needs the current password, signs out every other session and keeps this one. Anyone on a temporary password (new staff, a reset, or `create:staff`) is sent there after signing in.
   - Submitting a document moves an `UNVERIFIED` or `REJECTED` company to `PENDING` (a `VERIFIED` company stays verified), which is what puts it in the verifier's queue.
   - A document is reviewed **once** (`PENDING → APPROVED | REJECTED`, conditional update, so a second reviewer gets 409); rejecting requires a reason, which the company sees on its profile next to a "View document" link.
   - **Documents expire.** Tax clearance, NSSA compliance and PRAZ registration must be uploaded with their expiry date (400 without); a company registration never takes one; any other document may. A date is a calendar day, valid through the end of that day in Harare (`harare-day.ts`, shared with the bid deadline). A document can't be uploaded or approved once lapsed (400). Approving confirms the date: the verifier's field is pre-filled with the company's date, and whatever it holds on approval is what's stored.
@@ -207,6 +213,7 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
   ```
 - **Run Prisma from `backend/`, never the repo root.** The root has no `package.json`, so `npx prisma` there skips the project's pinned Prisma 5.22 and downloads npm's `latest` (currently an 8.x pre-release) — whose CLI has no `migrate` command and fails with `No command registered for 'migrate'`. From `backend/`, `npx prisma --version` should report 5.22.0; `npm run prisma:migrate -- --name <name>` always uses the pinned version.
 - **Schema change — run a migration.** This pass adds the `Invite` model: from `backend/`, `npx prisma migrate dev --name add-invites` (or `npx prisma db push` on a throwaway DB). Users registered before it are all `COMPANY_MEMBER`, so no company in an existing dev DB has an admin yet — promote one by hand (`UPDATE "User" SET role = 'COMPANY_ADMIN' WHERE email = '…';`) or re-register.
+- **Fifth schema change: account controls** — `User.disabledAt`, `User.tokensValidAfter` (both nullable) and `User.mustChangePassword` (default `false`). Additive. From `backend/`, `npx prisma migrate dev --name account-controls`.
 - **Fourth schema change: bid revisions** — a `SUPERSEDED` value on `BidStatus` and a nullable, unique `Bid.revisionOfId`. From `backend/`, `npx prisma migrate dev --name bid-revisions`. Nothing to backfill: existing bids simply have no history.
 - **Third schema change: a `PLATFORM` company type** for portal staff. It only adds an enum value: `npx prisma migrate dev --name platform-company-type` from `backend/`.
 - **Second schema change: ratings are unique per (RFQ, author, rated company).** From `backend/`, `npx prisma migrate dev --name unique-ratings`. Ratings could be posted by anyone before, so a dev database may hold duplicates or ratings that don't match any accepted bid; the migration fails on duplicates. Look first with `SELECT "rfqId", "authorCompanyId", "ratedCompanyId", COUNT(*) FROM "Rating" GROUP BY 1, 2, 3 HAVING COUNT(*) > 1;` and clear anything that shouldn't be there before migrating.
