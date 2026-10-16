@@ -15,7 +15,8 @@ export class BidsController {
   @Post()
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateBidDto) {
     // supplierCompanyId comes from the verified token — a logged-in user
-    // can only ever bid as their own company.
+    // can only ever bid as their own company. If that company already has a
+    // live bid on the RFQ, this one replaces it as a revision.
     return this.bidsService.create(user.companyId, dto);
   }
 

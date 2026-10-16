@@ -84,6 +84,15 @@ export default function RfqDetailPage() {
   // rejected from submitting. `biddingOpen` comes from the API (status OPEN and
   // inside the deadline window) so the deadline rule lives in one place.
   const canBid = Boolean(user) && !isOwner && rfq.biddingOpen;
+  // The caller's live bid, if any — bidding again revises it. (Filtered by
+  // company because a platform admin gets every bid back, not just its own.)
+  const liveOwnBid = canBid
+    ? rfq.bids?.find(
+        (b) =>
+          b.supplierCompanyId === user?.companyId &&
+          (b.status === 'SUBMITTED' || b.status === 'SHORTLISTED'),
+      )
+    : undefined;
 
   return (
     <div className="space-y-10">
@@ -153,7 +162,9 @@ export default function RfqDetailPage() {
                 : 'This RFQ is no longer accepting bids.'}
             </p>
           )}
-          {canBid && <BidForm rfqId={rfq.id} onSubmitted={load} />}
+          {canBid && (
+            <BidForm key={liveOwnBid?.id ?? 'new'} rfqId={rfq.id} current={liveOwnBid} onSubmitted={load} />
+          )}
         </div>
       </div>
     </div>

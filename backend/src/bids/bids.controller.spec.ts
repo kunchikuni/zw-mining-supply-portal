@@ -64,7 +64,8 @@ describe('BidsController over HTTP', () => {
       expect(service.setStatus).toHaveBeenCalledWith('b1', SUPPLIER, 'WITHDRAWN');
     });
 
-    it.each([{ status: 'banana' }, {}])('rejects body %j with 400 before the service runs', async (body) => {
+    // SUPERSEDED is a real BidStatus, but only a revision (POST /bids) sets it.
+    it.each([{ status: 'banana' }, {}, { status: 'SUPERSEDED' }])('rejects body %j with 400 before the service runs', async (body) => {
       expect((await t.request('PATCH', '/bids/b1/status', { as: SUPPLIER, body })).status).toBe(400);
       expect(service.setStatus).not.toHaveBeenCalled();
     });
@@ -73,6 +74,11 @@ describe('BidsController over HTTP', () => {
   it('places the bid as the token’s company, never one in the body', async () => {
     await t.request('POST', '/bids', { as: SUPPLIER, body: { rfqId: 'r1', amount: 100, supplierCompanyId: 'sup2' } });
     expect(service.create).toHaveBeenCalledWith('sup1', expect.not.objectContaining({ supplierCompanyId: expect.anything() }));
+  });
+
+  it('strips a revisionOfId from the body: which bid is revised is decided server-side', async () => {
+    await t.request('POST', '/bids', { as: SUPPLIER, body: { rfqId: 'r1', amount: 100, revisionOfId: 'someone-elses-bid' } });
+    expect(service.create).toHaveBeenCalledWith('sup1', expect.not.objectContaining({ revisionOfId: expect.anything() }));
   });
 
   it('attaches the expected guards', () => {

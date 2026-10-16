@@ -17,7 +17,15 @@ export type DocumentStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
 
 export type RfqStatus = 'OPEN' | 'CLOSED' | 'AWARDED' | 'CANCELLED';
 
-export type BidStatus = 'SUBMITTED' | 'SHORTLISTED' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN';
+// SUPERSEDED: replaced by the supplier's revised bid. Listings never show one
+// at the top level, only inside the current bid's `history`.
+export type BidStatus =
+  | 'SUBMITTED'
+  | 'SHORTLISTED'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'WITHDRAWN'
+  | 'SUPERSEDED';
 
 export interface Category {
   id: string;
@@ -137,6 +145,11 @@ export interface Bid {
   notes?: string | null;
   status: BidStatus;
   submittedAt: string;
+  // The bid this one revised, if any.
+  revisionOfId?: string | null;
+  // On every bid listing: the versions this bid replaced, newest first
+  // (empty if it was never revised).
+  history?: Bid[];
 }
 
 export interface AuthUser {

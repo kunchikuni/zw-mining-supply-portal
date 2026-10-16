@@ -238,6 +238,8 @@ export function createRfq(
 }
 
 // ---- Bids ----
+// If the caller already has a live (submitted or shortlisted) bid on this RFQ,
+// this one replaces it as a revision; the old version stays in its history.
 export function createBid(
   token: string,
   data: {

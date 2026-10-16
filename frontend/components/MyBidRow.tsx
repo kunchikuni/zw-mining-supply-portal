@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { setBidStatus, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Bid } from '@/lib/types';
+import { BidHistory } from './BidHistory';
 import { BidStatusBadge } from './BidStatusBadge';
+import { ButtonLink } from './Button';
 import { ConfirmAction } from './ConfirmAction';
 import { ErrorBanner } from './ErrorBanner';
 import { RfqStatusBadge } from './RfqStatusBadge';
@@ -30,6 +32,8 @@ function describe(bid: Bid): string {
       return "The mine didn't select your bid.";
     case 'WITHDRAWN':
       return 'You withdrew this bid.';
+    case 'SUPERSEDED':
+      return 'Replaced by your revised bid.';
   }
 }
 
@@ -41,6 +45,9 @@ export function MyBidRow({ bid, onChanged }: { bid: Bid; onChanged: () => void }
   // The server also lets a supplier withdraw from a cancelled RFQ, but there's
   // nothing left to withdraw from, so the button isn't offered.
   const canWithdraw = isActive(bid) && rfq?.status !== 'CANCELLED';
+  // Revising happens on the RFQ page, where the bid form turns into "Revise
+  // your bid" while this bid is live and bidding is open.
+  const canRevise = isActive(bid) && Boolean(rfq?.biddingOpen);
 
   async function withdraw() {
     setError(null);
@@ -76,6 +83,7 @@ export function MyBidRow({ bid, onChanged }: { bid: Bid; onChanged: () => void }
             {' · submitted '}
             {formatDate(bid.submittedAt)}
           </p>
+          <BidHistory history={bid.history} />
           <p className="mt-1 text-xs text-gray-500">{describe(bid)}</p>
         </div>
         <dl className="flex flex-col items-end gap-1.5 text-xs text-gray-400">
@@ -96,15 +104,22 @@ export function MyBidRow({ bid, onChanged }: { bid: Bid; onChanged: () => void }
         </dl>
       </div>
 
-      {canWithdraw && (
-        <div className="mt-3">
-          <ConfirmAction
-            label="Withdraw bid"
-            prompt="Withdraw this bid? This can't be undone."
-            confirmLabel="Yes, withdraw"
-            variant="danger"
-            onConfirm={withdraw}
-          />
+      {(canRevise || canWithdraw) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {canRevise && (
+            <ButtonLink href={`/rfqs/${bid.rfqId}`} variant="secondary" size="sm">
+              Revise bid
+            </ButtonLink>
+          )}
+          {canWithdraw && (
+            <ConfirmAction
+              label="Withdraw bid"
+              prompt="Withdraw this bid? This can't be undone."
+              confirmLabel="Yes, withdraw"
+              variant="danger"
+              onConfirm={withdraw}
+            />
+          )}
         </div>
       )}
       {error && (

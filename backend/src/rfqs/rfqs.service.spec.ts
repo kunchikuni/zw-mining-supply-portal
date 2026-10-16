@@ -23,19 +23,24 @@ function matches(row: Row, where: Row): boolean {
 
 function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
   const calls = { bidFindMany: 0, ratingFindMany: 0 };
+  // `_count: { select: { bids: ... } }`, honouring a `status: { not }` filter.
+  const countBids = (rfqId: string, include?: Row) => {
+    const not = include?._count?.select?.bids?.where?.status?.not;
+    return bids.filter((b) => b.rfqId === rfqId && (not === undefined || b.status !== not)).length;
+  };
   const fake = {
     calls,
     rfq: {
-      findMany: async ({ where, orderBy }: Row) =>
+      findMany: async ({ where, orderBy, include }: Row) =>
         rfqs
           .filter((r) => matches(r, where))
           .sort((a, b) =>
             orderBy?.createdAt === 'desc' ? b.createdAt - a.createdAt : a.deadline - b.deadline,
           )
-          .map((r) => ({ ...r, _count: { bids: bids.filter((b) => b.rfqId === r.id).length } })),
-      findUnique: async ({ where }: Row) => {
+          .map((r) => ({ ...r, _count: { bids: countBids(r.id, include) } })),
+      findUnique: async ({ where, include }: Row) => {
         const r = rfqs.find((x) => x.id === where.id);
-        return r ? { ...r, _count: { bids: bids.filter((b) => b.rfqId === r.id).length } } : null;
+        return r ? { ...r, _count: { bids: countBids(r.id, include) } } : null;
       },
       findUniqueOrThrow: async ({ where }: Row) => ({ ...rfqs.find((x) => x.id === where.id) }),
       updateMany: async ({ where, data }: Row) => {
@@ -304,6 +309,28 @@ describe('RfqsService.findOne — sealed bids', () => {
     expect((await view(null)).out.biddingOpen).toBe(true);
     const { service } = makePrisma([]);
     await expect(service.findOne('nope', null)).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('RfqsService — revised bids', () => {
+  const bids = [
+    { id: 'v1', rfqId: 'r1', supplierCompanyId: 'sup1', status: 'SUPERSEDED', submittedAt: D('2026-10-01') },
+    { id: 'o1', rfqId: 'r1', supplierCompanyId: 'sup2', status: 'SUBMITTED', submittedAt: D('2026-10-02') },
+    { id: 'v2', rfqId: 'r1', supplierCompanyId: 'sup1', status: 'SUBMITTED', revisionOfId: 'v1', submittedAt: D('2026-10-03') },
+  ];
+
+  it('lists one entry per offer on the RFQ page, replaced versions under history', async () => {
+    const { service } = makePrisma([rfq('r1')], bids);
+    const out: Row = await service.findOne('r1', user('mine1', 'COMPANY_ADMIN'));
+    expect(ids(out.bids)).toEqual(['o1', 'v2']);
+    expect(ids(out.bids[1].history)).toEqual(['v1']);
+    expect(ids((await service.findOne('r1', user('sup1'))).bids)).toEqual(['v2']);
+  });
+
+  it('counts offers, not versions — for everyone, and on My RFQs', async () => {
+    const { service } = makePrisma([rfq('r1')], bids);
+    expect((await service.findOne('r1', null))._count.bids).toBe(2);
+    expect((await service.findMine('mine1'))[0]._count.bids).toBe(2);
   });
 });
 
