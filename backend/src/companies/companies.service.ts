@@ -10,7 +10,6 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { SearchCompaniesDto } from './dto/search-companies.dto';
 import {
   CompanyType,
-  DocumentStatus,
   UserRole,
   VerificationStatus,
   type Document as DocumentModel,
@@ -22,6 +21,7 @@ import {
   generateInviteCode,
   hashInviteCode,
 } from '../auth/invite-code';
+import { describeTypes, isCurrentApproval, lapsedDocumentTypes } from '../documents/document-expiry';
 
 @Injectable()
 export class CompaniesService {
@@ -180,9 +180,11 @@ export class CompaniesService {
 
   // A company is only tender-eligible once a verifier has reviewed its
   // documents — this is the trust layer the whole product depends on, so a
-  // company can't be marked VERIFIED without at least one approved document
-  // behind the decision. Rejecting, or resetting to PENDING / UNVERIFIED, is
-  // always allowed.
+  // company can't be marked VERIFIED without at least one current (approved,
+  // unexpired) document behind the decision, nor while a document type it had
+  // approved has lapsed without an approved renewal — the same rule that takes
+  // verification away (DocumentExpiryService). Rejecting, or resetting to
+  // PENDING / UNVERIFIED, is always allowed.
   async setVerificationStatus(companyId: string, status: VerificationStatus) {
     const company = await this.prisma.company.findUnique({
       where: { id: companyId },
@@ -193,12 +195,20 @@ export class CompaniesService {
     }
 
     if (status === VerificationStatus.VERIFIED) {
-      const approved = await this.prisma.document.count({
-        where: { companyId, status: DocumentStatus.APPROVED },
+      const docs = await this.prisma.document.findMany({
+        where: { companyId },
+        select: { docType: true, status: true, expiresAt: true, reviewedBy: true },
       });
-      if (approved === 0) {
+      const now = new Date();
+      if (!docs.some((d) => isCurrentApproval(d, now))) {
         throw new ConflictException(
           'Approve at least one of this company\'s documents before marking it verified',
+        );
+      }
+      const lapsed = lapsedDocumentTypes(docs, now);
+      if (lapsed.length > 0) {
+        throw new ConflictException(
+          `${describeTypes(lapsed)} has expired — approve a current one before marking this company verified`,
         );
       }
     }
@@ -211,9 +221,11 @@ export class CompaniesService {
 
   // Companies waiting on a verifier: they submitted a document, which moves
   // them to PENDING (see DocumentsService.register). Oldest first, with a
-  // summary of their documents so the verifier can see what's been reviewed.
-  verificationQueue() {
-    return this.prisma.company.findMany({
+  // summary of their documents so the verifier can see what's been reviewed,
+  // and `lapsedDocTypes`: anything that must be renewed and approved before
+  // the company can be verified.
+  async verificationQueue() {
+    const companies = await this.prisma.company.findMany({
       where: { verificationStatus: VerificationStatus.PENDING, type: { not: CompanyType.PLATFORM } },
       select: {
         id: true,
@@ -224,11 +236,18 @@ export class CompaniesService {
         verificationStatus: true,
         updatedAt: true,
         documents: {
-          select: { id: true, docType: true, status: true, uploadedAt: true },
+          select: { id: true, docType: true, status: true, uploadedAt: true, expiresAt: true, reviewedBy: true },
           orderBy: { uploadedAt: 'asc' },
         },
       },
       orderBy: { updatedAt: 'asc' },
     });
+    const now = new Date();
+    // reviewedBy is only needed to work out lapsedDocTypes; the summary stays a summary.
+    return companies.map(({ documents, ...company }) => ({
+      ...company,
+      documents: documents.map(({ reviewedBy, ...doc }) => doc),
+      lapsedDocTypes: lapsedDocumentTypes(documents, now),
+    }));
   }
 }

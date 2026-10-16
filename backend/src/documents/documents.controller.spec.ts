@@ -62,9 +62,34 @@ describe('DocumentsController over HTTP', () => {
   it('registers a document for the token’s company only', async () => {
     await t.request('POST', '/documents', {
       as: SUPPLIER,
-      body: { docType: 'TAX_CLEARANCE', fileUrl: 'https://example.com/t.pdf', companyId: 'someone-else' },
+      body: { docType: 'TAX_CLEARANCE', fileUrl: 'https://example.com/t.pdf', expiresAt: '2099-12-31', companyId: 'someone-else' },
     });
     expect(service.register).toHaveBeenCalledWith('sup1', expect.not.objectContaining({ companyId: expect.anything() }));
+  });
+
+  describe('POST /documents expiry dates', () => {
+    const post = (body: object) => t.request('POST', '/documents', { as: SUPPLIER, body: { fileUrl: 'https://example.com/x.pdf', ...body } });
+
+    it.each(['TAX_CLEARANCE', 'NSSA_COMPLIANCE', 'PRAZ_REGISTRATION'])('requires one for %s (400)', async (docType) => {
+      const res = await post({ docType });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).toContain('expiry date');
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it.each(['COMPANY_REGISTRATION', 'SAFETY_CERTIFICATE', 'QUALITY_CERTIFICATE', 'OTHER'])('does not require one for %s', async (docType) => {
+      expect((await post({ docType })).status).toBe(201);
+    });
+
+    it('rejects a malformed date (400)', async () => {
+      expect((await post({ docType: 'SAFETY_CERTIFICATE', expiresAt: 'next year' })).status).toBe(400);
+      expect(service.register).not.toHaveBeenCalled();
+    });
+  });
+
+  it("passes the verifier's expiry date through with an approval", async () => {
+    await t.request('PATCH', '/documents/d1/review', { as: VERIFIER, body: { status: 'APPROVED', expiresAt: '2099-06-30' } });
+    expect(service.review).toHaveBeenCalledWith('d1', { status: 'APPROVED', expiresAt: '2099-06-30' }, VERIFIER.email);
   });
 
   it('attaches JWT + roles guards to the verifier routes', () => {

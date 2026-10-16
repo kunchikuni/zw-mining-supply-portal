@@ -7,19 +7,26 @@ import { useAuth } from '@/lib/auth';
 import type { DocumentRecord } from '@/lib/types';
 import { DOC_TYPE_LABELS } from '@/lib/labels';
 import { formatDate } from '@/lib/format';
+import { EXPIRY_REQUIRED, NEVER_EXPIRES, isLapsed } from '@/lib/expiry';
 import { Button } from './Button';
 import { ConfirmAction } from './ConfirmAction';
 import { ErrorBanner } from './ErrorBanner';
 
 // One pending document in the verifier's queue. A document is reviewed once
 // (the server refuses a second decision), so approving asks first, and
-// rejecting needs a reason — the company sees it on its profile.
+// rejecting needs a reason — the company sees it on its profile. Approving
+// also confirms the expiry date against the document: the company's date is
+// pre-filled, and whatever is in the field when approving is what counts.
 export function DocumentReviewRow({ doc, onChanged }: { doc: DocumentRecord; onChanged: () => void }) {
   const { token } = useAuth();
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState('');
+  const [expiresAt, setExpiresAt] = useState(doc.expiresAt?.slice(0, 10) ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const takesExpiry = !NEVER_EXPIRES.includes(doc.docType);
+  const needsExpiry = EXPIRY_REQUIRED.includes(doc.docType);
 
   async function decide(status: 'APPROVED' | 'REJECTED', reviewNote?: string) {
     setError(null);
@@ -27,8 +34,22 @@ export function DocumentReviewRow({ doc, onChanged }: { doc: DocumentRecord; onC
       setError('Sign in again to review documents.');
       return;
     }
+    if (status === 'APPROVED') {
+      if (needsExpiry && !expiresAt) {
+        setError('Enter the expiry date shown on the document before approving it.');
+        return;
+      }
+      if (isLapsed(expiresAt)) {
+        setError('This document has already expired — reject it and ask for the current one.');
+        return;
+      }
+    }
     try {
-      await reviewDocument(doc.id, { status, reviewNote }, token);
+      await reviewDocument(
+        doc.id,
+        { status, reviewNote, expiresAt: status === 'APPROVED' && takesExpiry && expiresAt ? expiresAt : undefined },
+        token,
+      );
       onChanged();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the review.');
@@ -75,6 +96,23 @@ export function DocumentReviewRow({ doc, onChanged }: { doc: DocumentRecord; onC
           >
             Open document ↗
           </a>
+          {takesExpiry && !rejecting && (
+            <div className="mt-3 max-w-[14rem]">
+              <label htmlFor={`expiry-${doc.id}`} className="label">
+                Expiry date{needsExpiry ? '' : ' (if any)'}
+              </label>
+              <input
+                id={`expiry-${doc.id}`}
+                type="date"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                className="input"
+              />
+              <p className="hint">
+                {doc.expiresAt ? 'As the company entered it — ' : ''}check it against the document.
+              </p>
+            </div>
+          )}
         </div>
         {!rejecting && (
           <div className="flex flex-wrap items-center gap-2">
