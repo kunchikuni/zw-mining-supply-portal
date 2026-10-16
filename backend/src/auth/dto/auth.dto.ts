@@ -25,3 +25,14 @@ export class LoginDto {
   @IsString()
   password: string;
 }
+
+export class ChangePasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  currentPassword: string;
+
+  // The same rule as registration.
+  @IsString()
+  @MinLength(8)
+  newPassword: string;
+}

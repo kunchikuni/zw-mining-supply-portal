@@ -22,10 +22,12 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const { accessToken } = await login(email, password);
+      const { accessToken, mustChangePassword } = await login(email, password);
       setToken(accessToken);
-      // Verifiers go straight to their workspace; everyone else to the directory.
-      router.push(isStaffRole(decodeToken(accessToken)?.role) ? '/verify' : '/companies');
+      // A temporary password from an admin gets replaced first. Otherwise
+      // verifiers go straight to their workspace; everyone else to the directory.
+      if (mustChangePassword) router.push('/account/password?temporary=1');
+      else router.push(isStaffRole(decodeToken(accessToken)?.role) ? '/verify' : '/companies');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not sign in. Try again.');
     } finally {

@@ -106,6 +106,16 @@ model User {
   role         UserRole  @default(COMPANY_MEMBER)
   phone        String?
   createdAt    DateTime  @default(now())
+  // Set when a platform admin disables the account: it can't sign in, and a
+  // token it already holds stops working on its next request.
+  disabledAt   DateTime?
+  // Tokens issued before this instant are refused, which signs out every
+  // existing session. Set on a password change or reset; whole seconds, to
+  // compare with a token's `iat`.
+  tokensValidAfter DateTime?
+  // The password was issued by an admin (new staff account or a reset); the
+  // app asks the user to choose their own after signing in.
+  mustChangePassword Boolean @default(false)
 
   @@index([companyId])
 }

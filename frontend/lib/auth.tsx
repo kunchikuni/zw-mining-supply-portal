@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { AuthUser } from './types';
+import { SESSION_ENDED_EVENT } from './api';
 
 // NOTE for production hardening: this MVP stores the JWT in localStorage for
 // simplicity. That's readable by any script on the page (XSS risk). A
@@ -36,6 +37,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTokenState(stored);
       setUser(decodeToken(stored));
     }
+  }, []);
+
+  // The server refused our token (disabled account, password changed
+  // elsewhere, expired): sign out here too.
+  useEffect(() => {
+    const signOut = () => {
+      setTokenState(null);
+      setUser(null);
+      window.localStorage.removeItem('zwsp_token');
+    };
+    window.addEventListener(SESSION_ENDED_EVENT, signOut);
+    return () => window.removeEventListener(SESSION_ENDED_EVENT, signOut);
   }, []);
 
   function setToken(next: string | null) {

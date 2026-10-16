@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -8,8 +9,9 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
-import { RegisterDto, LoginDto } from './dto/auth.dto';
+import { ChangePasswordDto, RegisterDto, LoginDto } from './dto/auth.dto';
 import { hashInviteCode } from './invite-code';
+import { sessionCutoff } from './session';
 
 // One message for every way a code can be bad (unknown, expired, used, wrong
 // email) so the endpoint can't be used to probe which codes exist.
@@ -70,6 +72,41 @@ export class AuthService {
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid credentials');
     }
+    // Checked after the password, so it tells nobody but the account holder
+    // that the account exists.
+    if (user.disabledAt) {
+      throw new UnauthorizedException('This account has been disabled — contact a portal administrator');
+    }
+    // mustChangePassword: signed in with a temporary password an admin issued;
+    // the app sends the user to choose their own.
+    return {
+      ...this.issueToken(user.id, user.email, user.companyId, user.role),
+      mustChangePassword: user.mustChangePassword,
+    };
+  }
+
+  // Needs the current password, even though the caller is signed in, so a
+  // borrowed session can't lock the owner out. Every other session is signed
+  // out (tokensValidAfter); this one carries on with the fresh token returned.
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Your session has ended — sign in again');
+    // 400, not 401: the session is fine, the password typed isn't.
+    if (!(await bcrypt.compare(dto.currentPassword, user.passwordHash))) {
+      throw new BadRequestException('Your current password is incorrect');
+    }
+    if (dto.newPassword === dto.currentPassword) {
+      throw new BadRequestException('Choose a new password that differs from your current one');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await bcrypt.hash(dto.newPassword, 10),
+        mustChangePassword: false,
+        tokensValidAfter: sessionCutoff(),
+      },
+    });
     return this.issueToken(user.id, user.email, user.companyId, user.role);
   }
 
