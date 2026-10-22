@@ -52,12 +52,14 @@ zw-supplier-portal/
 │       ├── rfqs/                # mine-posted requests for quote
 │       ├── bids/                # supplier bids, eligibility-gated
 │       ├── ratings/             # post-job performance scores
+│       ├── notifications/       # email outbox + sender, new-RFQ alerts
 │       └── staff/               # platform admins manage portal staff accounts
 └── frontend/
     ├── app/
     │   ├── layout.tsx           # AuthProvider + Navbar wrapper
     │   ├── page.tsx             # home
     │   ├── login/page.tsx
+    │   ├── account/page.tsx     # your account: email preferences, link to change password
     │   ├── account/password/    # change your password (also first sign-in on a temporary one)
     │   ├── staff/page.tsx       # platform admins: add, disable, reset staff
     │   ├── register/page.tsx    # 2-step: create company -> create user
@@ -88,7 +90,7 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 
 | Resource | Endpoints |
 |---|---|
-| `/auth` | `POST /register` (needs an `inviteCode`), `POST /login` (refuses a disabled account; says if the password is temporary), `POST /change-password` (signed in; needs the current password; signs out other sessions) |
+| `/auth` | `POST /register` (needs an `inviteCode`), `POST /login` (refuses a disabled account; says if the password is temporary), `POST /change-password` (signed in; needs the current password; signs out other sessions), `GET /me` and `PATCH /me` (the caller's own account; only `rfqAlerts` is settable) |
 | `/staff` | Platform admins only: `GET /`, `POST /` (returns a one-time temporary password), `PATCH /:id/disabled`, `POST /:id/reset-password` — never your own account |
 | `/companies` | `POST /` (returns the first-admin `inviteCode`), `GET /` (search/filter), `GET /:id`, `POST /:id/categories` (add), `PUT /:id/categories` (replace the whole listing), `POST /:id/invites` (company admin), `GET /verification-queue` (verifiers: companies in PENDING with a document summary and `lapsedDocTypes`), `PATCH /:id/verification-status` (verifiers; `VERIFIED` needs a current approved document and nothing lapsed without an approved renewal) |
 | `/categories` | `GET /`, `POST /` (platform admin only) |
@@ -119,7 +121,7 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 ```bash
 # Backend
 cd backend
-cp .env.example .env       # set DATABASE_URL and JWT_SECRET
+cp .env.example .env       # set DATABASE_URL and JWT_SECRET; SMTP_* for email (see below)
 npm install
 npx prisma migrate dev --name init
 npm run seed
@@ -131,6 +133,10 @@ cd frontend
 cp .env.local.example .env.local
 npm install
 npm run dev                # http://localhost:3001 (or whatever port is free)
+
+# Email, locally: Mailpit catches everything the app sends (nothing reaches a real inbox)
+docker run -d --name zwsp-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 axllent/mailpit
+# then in backend/.env: SMTP_HOST=127.0.0.1, SMTP_PORT=1025 — and read mail at http://localhost:8025
 ```
 
 ## Known gaps / next honest steps
@@ -145,7 +151,7 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 - **Redundant board special case**: `GET /rfqs` still returns a mine its own expired RFQs (flagged `biddingOpen: false`) from before "My RFQs" existed. It's harmless but no longer needed; removing it would let the board drop its optional-auth guard and the frontend's token-dependent refetch.
 - **Type duplication**: `frontend/lib/types.ts` hand-mirrors `schema.prisma`. Fine at this size; once it drifts twice, generate the frontend types from the Prisma schema instead of hand-syncing.
 - **File upload**: `DocumentUploadForm` takes a pasted link, not a real upload — presigned S3 upload is Phase 2.
-- **No notifications**: RFQs don't yet fan out to matching suppliers (WhatsApp/SMS/email) — flagged in `RfqsService.create`.
+- **Notifications are new-RFQ emails only**: bid outcomes, verification decisions and expiry reminders aren't emailed yet, and there's no WhatsApp/SMS. Alerts link to the Account page to opt out, which needs sign-in; before sending in volume, add a one-click `List-Unsubscribe` link (large mailbox providers expect it from bulk senders). Emails that end `FAILED` (after 6 attempts) are only visible in the `EmailOutbox` table — there's no admin view or alert for them.
 - **Bids stay sealed forever**: there's no post-award disclosure — once an RFQ is awarded, other bidders still can't see who won or at what price. Public-procurement practice often publishes the award; whether this portal should is a product call, and `bids/bid-visibility.ts` is the one place to add it.
 - **Ratings are final, and only on the profile**: a mine rates each supplier it hired from the awarded RFQ's page, and the supplier's profile shows the average and every comment — but a rating can't be edited or deleted (matching how accept/reject work), the directory cards and a mine's bid list don't show a bidder's rating yet, and "My RFQs" doesn't flag awarded RFQs still waiting for one.
 - **One live bid per supplier is enforced in code, not by the database**: `BidsService.create` locks the RFQ row while it revises or creates a bid, which is what stops two submissions racing. A partial unique index on `(rfqId, supplierCompanyId)` for `SUBMITTED`/`SHORTLISTED` bids would make the database guarantee it too; it needs a hand-written migration, and existing duplicate bids from before revisions would have to be cleared first. Also by design for now: a supplier whose bid was rejected or withdrawn can submit a fresh one while bidding is open, and revisions have no limit before the deadline.
@@ -158,6 +164,7 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
 - `RolesGuard` + `@Roles(...)` — restricts a route to specific `UserRole` values. Used to lock verification (`PATCH /companies/:id/verification-status`, `GET /companies/verification-queue`) and document review (`GET /documents/review-queue`, `PATCH /documents/:id/review`) to `VERIFIER`/`PLATFORM_ADMIN`, and `POST /categories` to `PLATFORM_ADMIN`.
 - **Verification is done by portal staff, in the app.** Staff (`VERIFIER` / `PLATFORM_ADMIN`) are created with `npm run create:staff -- --email … --name … [--role PLATFORM_ADMIN] [--password-file <path>]` and belong to the portal's own company of type `PLATFORM` — a type that can't be chosen at signup (400), never appears in the directory, and can't be used as a directory filter. Signing in takes staff to `/verify`, and their nav shows Verification instead of the mine/supplier links.
   - **Platform admins manage staff on the Staff page** (`/staff`, `GET/POST/PATCH /staff`): add a verifier or admin (a temporary password is shown once), disable or re-enable an account (it's signed out on its next request and can't sign in), and reset a password (a new temporary one; existing sessions end). An admin can't disable or reset their own account — which also means the last active admin can never be locked out. Only accounts in the `PLATFORM` company are reachable (404 otherwise). The first admin comes from `npm run create:staff -- --role PLATFORM_ADMIN`.
+  - **New RFQs are emailed to the suppliers who can bid on them.** Posting an RFQ queues one email per active user (who hasn't turned alerts off on their Account page) at every `VERIFIED` company listing the RFQ's category — the same eligibility bids are held to — except the posting mine. The emails are written to an `EmailOutbox` table **in the same transaction as the RFQ**, keyed by RFQ and user so nothing is queued twice, and `EmailOutboxService` delivers them over SMTP every 15 seconds: each email is claimed with a conditional update (so two instances never send the same one), failures are retried after 1 min, 5 min, 30 min, 2 h and 6 h, and the sixth failure marks it `FAILED` with the error. An alert that's still waiting when bidding closes is `SKIPPED`. Without `SMTP_HOST`, emails wait in the outbox. Everything a user typed is HTML-escaped in the email.
   - **Everyone can change their own password** (`/account/password`, `POST /auth/change-password`): it needs the current password, signs out every other session and keeps this one. Anyone on a temporary password (new staff, a reset, or `create:staff`) is sent there after signing in.
   - Submitting a document moves an `UNVERIFIED` or `REJECTED` company to `PENDING` (a `VERIFIED` company stays verified), which is what puts it in the verifier's queue.
   - A document is reviewed **once** (`PENDING → APPROVED | REJECTED`, conditional update, so a second reviewer gets 409); rejecting requires a reason, which the company sees on its profile next to a "View document" link.
@@ -213,6 +220,7 @@ npm run dev                # http://localhost:3001 (or whatever port is free)
   ```
 - **Run Prisma from `backend/`, never the repo root.** The root has no `package.json`, so `npx prisma` there skips the project's pinned Prisma 5.22 and downloads npm's `latest` (currently an 8.x pre-release) — whose CLI has no `migrate` command and fails with `No command registered for 'migrate'`. From `backend/`, `npx prisma --version` should report 5.22.0; `npm run prisma:migrate -- --name <name>` always uses the pinned version.
 - **Schema change — run a migration.** This pass adds the `Invite` model: from `backend/`, `npx prisma migrate dev --name add-invites` (or `npx prisma db push` on a throwaway DB). Users registered before it are all `COMPANY_MEMBER`, so no company in an existing dev DB has an admin yet — promote one by hand (`UPDATE "User" SET role = 'COMPANY_ADMIN' WHERE email = '…';`) or re-register.
+- **Sixth schema change: the email outbox** — an `EmailOutbox` table with an `EmailStatus` enum, and `User.rfqAlerts` (default `true`). Additive. From `backend/`, `npx prisma migrate dev --name email-outbox`.
 - **Fifth schema change: account controls** — `User.disabledAt`, `User.tokensValidAfter` (both nullable) and `User.mustChangePassword` (default `false`). Additive. From `backend/`, `npx prisma migrate dev --name account-controls`.
 - **Fourth schema change: bid revisions** — a `SUPERSEDED` value on `BidStatus` and a nullable, unique `Bid.revisionOfId`. From `backend/`, `npx prisma migrate dev --name bid-revisions`. Nothing to backfill: existing bids simply have no history.
 - **Third schema change: a `PLATFORM` company type** for portal staff. It only adds an enum value: `npx prisma migrate dev --name platform-company-type` from `backend/`.

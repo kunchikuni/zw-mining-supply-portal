@@ -11,6 +11,7 @@ import { seesEveryBid, visibleBidsWhere } from '../bids/bid-visibility';
 import { withRevisionHistory } from '../bids/bid-revisions';
 import { BidStatus, Prisma, RfqStatus, VerificationStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
+import { RfqAlertsService } from '../notifications/rfq-alerts.service';
 
 // Where a mine can take an RFQ by hand. AWARDED is deliberately not a target:
 // it's reached only by accepting a bid (BidsService.setStatus), so an RFQ can
@@ -30,14 +31,23 @@ const COUNT_OFFERS: Prisma.RfqCountOutputTypeSelect = {
 
 @Injectable()
 export class RfqsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private rfqAlerts: RfqAlertsService,
+  ) {}
 
+  // The RFQ and its email alerts to eligible suppliers are written in one
+  // transaction: alerts are only ever queued for an RFQ that exists, and an
+  // RFQ never exists without them. The outbox sends them afterwards.
   async create(mineCompanyId: string, dto: CreateRfqDto) {
-    const rfq = await this.prisma.rfq.create({
-      data: { ...dto, mineCompanyId, deadline: new Date(dto.deadline) },
+    const rfq = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.rfq.create({
+        data: { ...dto, mineCompanyId, deadline: new Date(dto.deadline) },
+        include: { mine: { select: { name: true } }, category: { select: { name: true } } },
+      });
+      await this.rfqAlerts.enqueue(tx, created);
+      return created;
     });
-    // Phase 2: fan out a WhatsApp/SMS/email notification here to every
-    // VERIFIED supplier listed under dto.categoryId — see notifications module.
     return this.withBiddingState(rfq);
   }
 

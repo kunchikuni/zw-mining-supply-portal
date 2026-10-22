@@ -116,6 +116,9 @@ model User {
   // The password was issued by an admin (new staff account or a reset); the
   // app asks the user to choose their own after signing in.
   mustChangePassword Boolean @default(false)
+  // Emails about new RFQs in the company's categories. On by default; the
+  // user can turn them off on their Account page.
+  rfqAlerts    Boolean   @default(true)
 
   @@index([companyId])
 }
@@ -233,4 +236,38 @@ model Rating {
   // get through.
   @@unique([rfqId, authorCompanyId, ratedCompanyId])
   @@index([ratedCompanyId])
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  // Gave up after repeated failures; lastError says why.
+  FAILED
+  // No longer worth sending: sendBefore passed while it waited.
+  SKIPPED
+}
+
+// Outgoing email. A notification is written here in the same transaction as
+// the action that causes it — so a rolled-back action sends nothing — and
+// EmailOutboxService delivers it, retrying with backoff if the mail server
+// is down.
+model EmailOutbox {
+  id            String      @id @default(uuid())
+  // What it's about and for whom, e.g. "rfq-alert:<rfqId>:<userId>". Unique,
+  // so the same notification can't be queued twice.
+  key           String      @unique
+  to            String
+  subject       String
+  text          String
+  html          String
+  status        EmailStatus @default(PENDING)
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now())
+  // Not sent after this: an RFQ alert is pointless once bidding has closed.
+  sendBefore    DateTime?
+  lastError     String?
+  createdAt     DateTime    @default(now())
+  sentAt        DateTime?
+
+  @@index([status, nextAttemptAt])
 }

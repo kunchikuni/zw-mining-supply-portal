@@ -1,6 +1,6 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, RegisterDto, LoginDto } from './dto/auth.dto';
+import { ChangePasswordDto, RegisterDto, LoginDto, UpdateMeDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import type { JwtPayload } from './jwt.strategy';
@@ -25,5 +25,18 @@ export class AuthController {
   @Post('change-password')
   changePassword(@CurrentUser() user: JwtPayload, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(user.sub, dto);
+  }
+
+  // The caller's own account and email preferences. Always the token's user.
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  me(@CurrentUser() user: JwtPayload) {
+    return this.authService.me(user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('me')
+  updateMe(@CurrentUser() user: JwtPayload, @Body() dto: UpdateMeDto) {
+    return this.authService.updateMe(user.sub, dto);
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  Account,
   Bid,
   BidStatus,
   Category,
@@ -83,6 +84,15 @@ export function changePassword(token: string, data: { currentPassword: string; n
     body: JSON.stringify(data),
     token,
   });
+}
+
+export function getMe(token: string) {
+  return request<Account>('/auth/me', { token });
+}
+
+// Preferences only; the server ignores anything else.
+export function updateMe(token: string, data: { rfqAlerts: boolean }) {
+  return request<Account>('/auth/me', { method: 'PATCH', body: JSON.stringify(data), token });
 }
 
 // ---- Staff (PLATFORM_ADMIN only) ----

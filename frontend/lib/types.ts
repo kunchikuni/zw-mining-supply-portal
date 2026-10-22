@@ -166,6 +166,16 @@ export interface AuthUser {
   role: string;
 }
 
+// The signed-in user's own account (GET /auth/me).
+export interface Account {
+  email: string;
+  fullName: string;
+  role: string;
+  // Email when an RFQ is posted in one of the company's categories.
+  rfqAlerts: boolean;
+  company: { id: string; name: string; type: CompanyType };
+}
+
 export type StaffRole = 'VERIFIER' | 'PLATFORM_ADMIN';
 
 // A portal staff account as the Staff page sees it (GET /staff).

@@ -2,6 +2,7 @@ import { RfqsService } from './rfqs.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RfqStatus } from '@prisma/client';
 import { asPrisma, Row, user } from '../test-utils/users';
+import type { RfqAlertsService } from '../notifications/rfq-alerts.service';
 
 const D = (iso: string) => new Date(iso);
 const ids = (list: Row[]) => list.map((r) => r.id);
@@ -22,7 +23,7 @@ function matches(row: Row, where: Row): boolean {
 }
 
 function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
-  const calls = { bidFindMany: 0, ratingFindMany: 0 };
+  const calls = { bidFindMany: 0, ratingFindMany: 0, alerts: [] as Row[], inTransaction: false, failCreate: false, failAlerts: false };
   // `_count: { select: { bids: ... } }`, honouring a `status: { not }` filter.
   const countBids = (rfqId: string, include?: Row) => {
     const not = include?._count?.select?.bids?.where?.status?.not;
@@ -48,7 +49,10 @@ function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
         hit.forEach((r) => Object.assign(r, data));
         return { count: hit.length };
       },
-      create: async ({ data }: Row) => ({ id: 'new', status: 'OPEN', ...data }),
+      create: async ({ data }: Row) => {
+        if (calls.failCreate) throw new Error('simulated insert failure');
+        return { id: 'new', status: 'OPEN', ...data, mine: { name: 'Mine One' }, category: { name: 'PPE' } };
+      },
     },
     bid: {
       findMany: async ({ where }: Row) => {
@@ -69,7 +73,22 @@ function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
       },
     },
   };
-  return { fake, service: new RfqsService(asPrisma<PrismaService>(fake)) };
+  (fake as Row).$transaction = async (fn: (tx: Row) => Promise<unknown>) => {
+    calls.inTransaction = true;
+    try {
+      return await fn({ ...fake, isTx: true });
+    } finally {
+      calls.inTransaction = false;
+    }
+  };
+  const alerts = {
+    enqueue: async (tx: Row, rfq: Row) => {
+      if (calls.failAlerts) throw new Error('simulated outbox failure');
+      calls.alerts.push({ inTransaction: calls.inTransaction, sameTx: tx.isTx === true, rfq });
+      return 1;
+    },
+  };
+  return { fake, service: new RfqsService(asPrisma<PrismaService>(fake), alerts as unknown as RfqAlertsService) };
 }
 
 const rfq = (id: string, over: Row = {}): Row => ({
@@ -394,5 +413,33 @@ describe('RfqsService.create', () => {
       deadline: '2099-01-01T00:00:00.000Z',
     });
     expect(out.biddingOpen).toBe(true);
+  });
+
+  const dto = { title: 'Hard hats', categoryId: 'c1', description: 'Two hundred hard hats', deadline: '2099-01-01T00:00:00.000Z' };
+
+  it("queues the suppliers' alerts inside the same transaction, with the mine and category names", async () => {
+    const { fake, service } = makePrisma([]);
+    await service.create('mine1', dto);
+    expect(fake.calls.alerts).toHaveLength(1);
+    expect(fake.calls.alerts[0]).toMatchObject({ inTransaction: true, sameTx: true });
+    expect(fake.calls.alerts[0].rfq).toMatchObject({
+      mineCompanyId: 'mine1',
+      categoryId: 'c1',
+      mine: { name: 'Mine One' },
+      category: { name: 'PPE' },
+    });
+  });
+
+  it('fails the whole create if the alerts cannot be queued (so Postgres rolls the RFQ back)', async () => {
+    const { fake, service } = makePrisma([]);
+    fake.calls.failAlerts = true;
+    await expect(service.create('mine1', dto)).rejects.toThrow('simulated outbox failure');
+  });
+
+  it('queues nothing if the RFQ itself fails to save', async () => {
+    const { fake, service } = makePrisma([]);
+    fake.calls.failCreate = true;
+    await expect(service.create('mine1', dto)).rejects.toThrow('simulated insert failure');
+    expect(fake.calls.alerts).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
   // Joining a company requires a code issued by that company (or minted when
@@ -35,4 +35,12 @@ export class ChangePasswordDto {
   @IsString()
   @MinLength(8)
   newPassword: string;
+}
+
+// What a user may change about their own account. Only preferences: role,
+// email and company are never settable here (the validation pipe strips them).
+export class UpdateMeDto {
+  @IsOptional()
+  @IsBoolean()
+  rfqAlerts?: boolean;
 }
