@@ -12,6 +12,7 @@ import { visibleBidsWhere } from './bid-visibility';
 import { LIVE_BID_STATUSES, withRevisionHistory } from './bid-revisions';
 import { BidStatus, RfqStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
+import { BidUpdatesService } from '../notifications/bid-updates.service';
 
 // A bid is reviewed once: shortlisting is the only step that can be followed
 // by another. ACCEPTED is final because accepted bids are what the local
@@ -36,6 +37,7 @@ export class BidsService {
   constructor(
     private prisma: PrismaService,
     private rfqsService: RfqsService,
+    private bidUpdates: BidUpdatesService,
   ) {}
 
   async create(supplierCompanyId: string, dto: CreateBidDto) {
@@ -185,6 +187,12 @@ export class BidsService {
           where: { id: bid.rfqId, status: { in: [RfqStatus.OPEN, RfqStatus.CLOSED] } },
           data: { status: RfqStatus.AWARDED },
         });
+      }
+
+      // The mine's decision is emailed to the supplier, queued in this same
+      // transaction. A withdrawal is the supplier's own doing: nothing to tell.
+      if (status === BidStatus.SHORTLISTED || status === BidStatus.ACCEPTED || status === BidStatus.REJECTED) {
+        await this.bidUpdates.enqueueDecision(tx, id, status);
       }
 
       return tx.bid.findUniqueOrThrow({ where: { id } });

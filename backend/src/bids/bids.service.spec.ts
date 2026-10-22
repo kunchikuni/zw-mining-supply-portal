@@ -1,6 +1,7 @@
 import { BidsService } from './bids.service';
 import { RfqsService } from '../rfqs/rfqs.service';
 import type { RfqAlertsService } from '../notifications/rfq-alerts.service';
+import type { BidUpdatesService } from '../notifications/bid-updates.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { BidStatus } from '@prisma/client';
 import { asPrisma, Row, user } from '../test-utils/users';
@@ -18,6 +19,8 @@ function makeDb(rfqs: Row[], bids: Row[], companies: Row[] = []) {
     companies,
     created: [] as Row[],
     locks: [] as string[],
+    decisions: [] as Row[],
+    failDecisionEmail: false,
     failRfqUpdate: false,
     beforeBidUpdate: undefined as undefined | (() => void),
     beforeLock: undefined as undefined | (() => void),
@@ -108,8 +111,18 @@ function makeDb(rfqs: Row[], bids: Row[], companies: Row[] = []) {
     }
   };
   const p = asPrisma<PrismaService>(prisma);
-  // Bids never create RFQs, so the alerts dependency is never called here.
-  return { state, service: new BidsService(p, new RfqsService(p, {} as RfqAlertsService)) };
+  // Records the decision emails BidsService queues, and whether it did so on
+  // the transaction client (not the root one).
+  const bidUpdates = {
+    enqueueDecision: async (tx: Row, bidId: string, decision: string) => {
+      if (state.failDecisionEmail) throw new Error('simulated outbox failure');
+      state.decisions.push({ bidId, decision, inTransaction: tx !== prisma });
+      return 1;
+    },
+  } as unknown as BidUpdatesService;
+  // Bids never create or cancel RFQs, so RfqsService's notifiers are never called here.
+  const rfqsService = new RfqsService(p, {} as RfqAlertsService, {} as BidUpdatesService);
+  return { state, service: new BidsService(p, rfqsService, bidUpdates) };
 }
 
 const rfq = (over: Row = {}): Row => ({
@@ -312,6 +325,38 @@ describe('BidsService.setStatus — the mine reviewing bids', () => {
     };
     await expect(service.setStatus('b1', MINE, 'ACCEPTED')).rejects.toMatchObject({ status: 409 });
     expect(state.bids[0].status).toBe('REJECTED');
+    expect(state.rfqs[0].status).toBe('OPEN');
+    expect(state.decisions).toEqual([]);
+  });
+});
+
+describe('BidsService.setStatus — telling the supplier', () => {
+  const SUPPLIER = user('sup1', 'COMPANY_ADMIN');
+
+  it.each(['SHORTLISTED', 'ACCEPTED', 'REJECTED'])('queues the %s email once, inside the review transaction', async (status) => {
+    const { state, service } = makeDb([rfq()], [bid()]);
+    await service.setStatus('b1', MINE, status as BidStatus);
+    expect(state.decisions).toEqual([{ bidId: 'b1', decision: status, inTransaction: true }]);
+  });
+
+  it('emails nobody when the supplier withdraws its own bid', async () => {
+    const { state, service } = makeDb([rfq()], [bid()]);
+    await service.setStatus('b1', SUPPLIER, 'WITHDRAWN');
+    expect(state.bids[0].status).toBe('WITHDRAWN');
+    expect(state.decisions).toEqual([]);
+  });
+
+  it('emails nobody about a refused change', async () => {
+    const { state, service } = makeDb([rfq()], [bid({ status: 'REJECTED' })]);
+    await expect(service.setStatus('b1', MINE, 'ACCEPTED')).rejects.toMatchObject({ status: 409 });
+    expect(state.decisions).toEqual([]);
+  });
+
+  it("rolls the decision back if its email can't be queued: no silent accept", async () => {
+    const { state, service } = makeDb([rfq()], [bid()]);
+    state.failDecisionEmail = true;
+    await expect(service.setStatus('b1', MINE, 'ACCEPTED')).rejects.toThrow('simulated outbox failure');
+    expect(state.bids[0].status).toBe('SUBMITTED');
     expect(state.rfqs[0].status).toBe('OPEN');
   });
 });

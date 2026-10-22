@@ -4,6 +4,7 @@ import type { PrismaService } from '../prisma/prisma.service';
 import type { RfqStatus } from '@prisma/client';
 import { asPrisma, Row, user } from '../test-utils/users';
 import type { RfqAlertsService } from '../notifications/rfq-alerts.service';
+import type { BidUpdatesService } from '../notifications/bid-updates.service';
 
 const D = (iso: string) => new Date(iso);
 const ids = (list: Row[]) => list.map((r) => r.id);
@@ -31,7 +32,7 @@ const COMPANIES: Row[] = [
 ];
 
 function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
-  const calls = { bidFindMany: 0, ratingFindMany: 0, rfqCreate: 0, alerts: [] as Row[], inTransaction: false, failCreate: false, failAlerts: false };
+  const calls = { bidFindMany: 0, ratingFindMany: 0, rfqCreate: 0, alerts: [] as Row[], cancelled: [] as Row[], inTransaction: false, failCreate: false, failAlerts: false };
   // `_count: { select: { bids: ... } }`, honouring a `status: { not }` filter.
   const countBids = (rfqId: string, include?: Row) => {
     const not = include?._count?.select?.bids?.where?.status?.not;
@@ -103,7 +104,20 @@ function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
       return 1;
     },
   };
-  return { fake, service: new RfqsService(asPrisma<PrismaService>(fake), alerts as unknown as RfqAlertsService) };
+  const bidUpdates = {
+    enqueueRfqCancelled: async (tx: Row, rfqId: string) => {
+      calls.cancelled.push({ rfqId, inTransaction: calls.inTransaction, sameTx: tx.isTx === true });
+      return 1;
+    },
+  };
+  return {
+    fake,
+    service: new RfqsService(
+      asPrisma<PrismaService>(fake),
+      alerts as unknown as RfqAlertsService,
+      bidUpdates as unknown as BidUpdatesService,
+    ),
+  };
 }
 
 const rfq = (id: string, over: Row = {}): Row => ({
@@ -205,6 +219,28 @@ describe('RfqsService.findOpen — the public board', () => {
       rfq('c', { categoryId: 'c1', province: 'Midlands' }),
     ]);
     expect(ids(await service.findOpen('c1', 'Harare', undefined, NOW))).toEqual(['a']);
+  });
+});
+
+describe('RfqsService.setStatus — telling the bidders', () => {
+  const owner = user('mine1', 'COMPANY_ADMIN');
+
+  it.each(['OPEN', 'CLOSED'])('cancelling a %s RFQ queues the bidders\' emails in the same transaction', async (from) => {
+    const { fake, service } = makePrisma([rfq('r1', { status: from })]);
+    await service.setStatus('r1', owner, 'CANCELLED');
+    expect(fake.calls.cancelled).toEqual([{ rfqId: 'r1', inTransaction: true, sameTx: true }]);
+  });
+
+  it('closing an RFQ tells nobody (bids are still reviewed)', async () => {
+    const { fake, service } = makePrisma([rfq('r1')]);
+    await service.setStatus('r1', owner, 'CLOSED');
+    expect(fake.calls.cancelled).toEqual([]);
+  });
+
+  it('a refused cancel tells nobody', async () => {
+    const { fake, service } = makePrisma([rfq('r1', { status: 'AWARDED' })]);
+    await expect(service.setStatus('r1', owner, 'CANCELLED')).rejects.toMatchObject({ status: 409 });
+    expect(fake.calls.cancelled).toEqual([]);
   });
 });
 
