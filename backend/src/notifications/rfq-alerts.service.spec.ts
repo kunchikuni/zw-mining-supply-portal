@@ -1,5 +1,6 @@
 import type { ConfigService } from '@nestjs/config';
 import { RfqAlertsService } from './rfq-alerts.service';
+import { unsubscribeToken } from './unsubscribe';
 import type { Row } from '../test-utils/users';
 
 // Users with their company inlined. `findMany` evaluates exactly the `where`
@@ -104,6 +105,21 @@ describe('RfqAlertsService.enqueue — who is told about a new RFQ', () => {
     const { tx, outbox } = makeTx(users);
     await service().enqueue(tx as never, rfq);
     expect(outbox[0].sendBefore).toEqual(new Date('2026-10-24T22:00:00Z'));
+  });
+
+  it("gives each alert its own one-click unsubscribe: List-Unsubscribe headers to the API and a footer link to the page", async () => {
+    const { tx, outbox } = makeTx(users);
+    const config = { APP_URL: 'https://portal.example', API_URL: 'https://api.example/', JWT_SECRET: 's3cret' } as Record<string, string>;
+    await new RfqAlertsService({ get: (k: string) => config[k] } as unknown as ConfigService).enqueue(tx as never, rfq);
+    const alice = outbox.find((o) => o.to === 'alice@example.test')!;
+    const token = encodeURIComponent(unsubscribeToken('s3cret', 'alice'));
+    expect(alice.headers).toEqual({
+      'List-Unsubscribe': `<https://api.example/email/unsubscribe?token=${token}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    });
+    expect(alice.text).toContain(`Turn off RFQ alerts: https://portal.example/unsubscribe?token=${token}`);
+    // Bob's link only works for Bob.
+    expect(outbox.find((o) => o.to === 'bob@example.test')!.headers['List-Unsubscribe']).not.toContain(token);
   });
 
   it('writes the subject, text and HTML, linking to APP_URL (trailing slash trimmed)', async () => {

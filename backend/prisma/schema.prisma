@@ -260,6 +260,8 @@ model EmailOutbox {
   subject       String
   text          String
   html          String
+  // Extra mail headers, e.g. List-Unsubscribe on RFQ alerts. Null for most.
+  headers       Json?
   status        EmailStatus @default(PENDING)
   attempts      Int         @default(0)
   nextAttemptAt DateTime    @default(now())

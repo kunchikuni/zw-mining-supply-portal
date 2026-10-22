@@ -4,16 +4,25 @@ import { CompanyType, Prisma, VerificationStatus } from '@prisma/client';
 import { biddingClosesAt } from '../rfqs/bidding-window';
 import { AlertRfq, buildRfqAlert } from './rfq-alert';
 import { appUrlFrom } from './email-layout';
+import { apiUrlFrom, UnsubscribeConfig, unsubscribeLinks } from './unsubscribe';
 
 // Queues "new RFQ" emails. Called by RfqsService.create inside the transaction
 // that creates the RFQ, so an RFQ that fails to save emails nobody, and an
 // RFQ that saves always has its alerts queued. EmailOutboxService sends them.
+// Each carries a one-click unsubscribe (List-Unsubscribe headers and a footer
+// link that needs no sign-in): these are the portal's only optional emails.
 @Injectable()
 export class RfqAlertsService {
   private readonly appUrl: string;
+  private readonly unsubscribe: UnsubscribeConfig;
 
   constructor(config: ConfigService) {
     this.appUrl = appUrlFrom(config);
+    this.unsubscribe = {
+      secret: config.get<string>('JWT_SECRET') as string,
+      apiUrl: apiUrlFrom(config),
+      appUrl: this.appUrl,
+    };
   }
 
   // Everyone who could bid on it and wants to hear about it: active users who
@@ -41,12 +50,16 @@ export class RfqAlertsService {
     // email would go out (e.g. after a long mail-server outage).
     const sendBefore = biddingClosesAt(rfq.deadline);
     const { count } = await tx.emailOutbox.createMany({
-      data: recipients.map((r) => ({
-        key: `rfq-alert:${rfq.id}:${r.id}`,
-        to: r.email,
-        sendBefore,
-        ...buildRfqAlert(rfq, r, this.appUrl),
-      })),
+      data: recipients.map((r) => {
+        const links = unsubscribeLinks(this.unsubscribe, r.id);
+        return {
+          key: `rfq-alert:${rfq.id}:${r.id}`,
+          to: r.email,
+          sendBefore,
+          headers: links.headers,
+          ...buildRfqAlert(rfq, r, this.appUrl, links.pageUrl),
+        };
+      }),
       skipDuplicates: true,
     });
     return count;

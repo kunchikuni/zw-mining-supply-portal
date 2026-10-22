@@ -95,6 +95,20 @@ export function updateMe(token: string, data: { rfqAlerts: boolean }) {
   return request<Account>('/auth/me', { method: 'PATCH', body: JSON.stringify(data), token });
 }
 
+// ---- One-click unsubscribe from RFQ alerts (no sign-in: the token is the key) ----
+export interface UnsubscribeStatus {
+  email: string;
+  rfqAlerts: boolean;
+}
+
+export function getUnsubscribe(unsubscribeToken: string) {
+  return request<UnsubscribeStatus>(`/email/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`);
+}
+
+export function unsubscribe(unsubscribeToken: string) {
+  return request<UnsubscribeStatus>(`/email/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`, { method: 'POST' });
+}
+
 // ---- Staff (PLATFORM_ADMIN only) ----
 export function getStaff(token: string) {
   return request<StaffMember[]>('/staff', { token });

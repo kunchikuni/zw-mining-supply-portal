@@ -70,6 +70,14 @@ describe('EmailOutboxService.deliverDue', () => {
     expect(rows[0].sentAt).toEqual(expect.any(Date));
   });
 
+  it("sends an email's stored headers (e.g. List-Unsubscribe), and none for one without", async () => {
+    const headers = { 'List-Unsubscribe': '<https://api.example/email/unsubscribe?token=t>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' };
+    const { sent, service } = makeOutbox([email('a', { headers }), email('b', { headers: null })]);
+    await service.deliverDue(NOW);
+    expect(sent.find((e) => e.to === 'a@example.test')!.headers).toEqual(headers);
+    expect(sent.find((e) => e.to === 'b@example.test')!).not.toHaveProperty('headers');
+  });
+
   it('leaves emails that are not due yet, and ones already sent', async () => {
     const rows = [email('later', { nextAttemptAt: at(5 * MIN) }), email('done', { status: 'SENT' })];
     const { sent, service } = makeOutbox(rows);
