@@ -12,7 +12,7 @@ import { PageHeader } from '@/components/PageHeader';
 
 export default function NewRfqPage() {
   const router = useRouter();
-  const { user, token } = useAuth();
+  const { user, token, companyType } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -62,6 +62,21 @@ export default function NewRfqPage() {
         action={
           <ButtonLink href="/login" size="sm">
             Sign in
+          </ButtonLink>
+        }
+      />
+    );
+  }
+
+  // The server refuses anyone but a mine; say so instead of showing a form.
+  if (companyType && companyType !== 'MINE') {
+    return (
+      <EmptyState
+        title="Only mining companies post RFQs"
+        description="Suppliers bid on them: open requests in your categories are on the RFQ board."
+        action={
+          <ButtonLink href="/rfqs" size="sm">
+            Browse the RFQ board
           </ButtonLink>
         }
       />
