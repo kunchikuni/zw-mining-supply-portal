@@ -79,7 +79,13 @@ export class EmailOutboxService implements OnApplicationBootstrap, OnApplication
 
       const attempt = email.attempts + 1;
       try {
-        await this.mailer.send({ to: email.to, subject: email.subject, text: email.text, html: email.html });
+        await this.mailer.send({
+          to: email.to,
+          subject: email.subject,
+          text: email.text,
+          html: email.html,
+          ...(email.headers ? { headers: email.headers as Record<string, string> } : {}),
+        });
         await this.prisma.emailOutbox.update({
           where: { id: email.id },
           data: { status: EmailStatus.SENT, sentAt: new Date(), lastError: null },

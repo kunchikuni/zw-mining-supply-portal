@@ -30,7 +30,9 @@ function summarise(text: string): string {
   return `${cut.slice(0, cut.lastIndexOf(' ') > 0 ? cut.lastIndexOf(' ') : SUMMARY_LENGTH)}…`;
 }
 
-export function buildRfqAlert(rfq: AlertRfq, recipient: AlertRecipient, appUrl: string) {
+// `unsubscribeUrl`: the page that turns this recipient's RFQ alerts off
+// without signing in (see unsubscribe.ts).
+export function buildRfqAlert(rfq: AlertRfq, recipient: AlertRecipient, appUrl: string, unsubscribeUrl: string) {
   return renderEmail(`New RFQ in ${rfq.category.name}: ${rfq.title}`, {
     eyebrow: 'New request for quote',
     title: rfq.title,
@@ -46,6 +48,6 @@ export function buildRfqAlert(rfq: AlertRfq, recipient: AlertRecipient, appUrl: 
     body: summarise(rfq.description),
     button: { label: 'View the RFQ and bid', href: `${appUrl}/rfqs/${rfq.id}` },
     footer: `You're receiving this because ${recipient.company.name} is a verified supplier in ${rfq.category.name} on ZW Supplier Portal.`,
-    footerLink: { label: 'Turn off RFQ alerts', href: `${appUrl}/account` },
+    footerLink: { label: 'Turn off RFQ alerts', href: unsubscribeUrl },
   });
 }

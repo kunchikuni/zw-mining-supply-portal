@@ -7,6 +7,7 @@ export interface OutgoingEmail {
   subject: string;
   text: string;
   html: string;
+  headers?: Record<string, string>;
 }
 
 // What EmailOutboxService sends through. A class rather than an interface so
