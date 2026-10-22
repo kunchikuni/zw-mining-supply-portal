@@ -2,6 +2,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import { AuthService } from './auth.service';
 import { CompaniesService } from '../companies/companies.service';
+import type { CompanyUpdatesService } from '../notifications/company-updates.service';
 import { hashInviteCode } from './invite-code';
 import type { PrismaService } from '../prisma/prisma.service';
 import { asPrisma, Row } from '../test-utils/users';
@@ -98,7 +99,8 @@ function setup() {
   const { db, prisma } = makeDb();
   return {
     db,
-    companies: new CompaniesService(prisma),
+    // Registration never changes verification, so the company emails are never queued here.
+    companies: new CompaniesService(prisma, {} as CompanyUpdatesService),
     auth: new AuthService(prisma, jwt),
   };
 }

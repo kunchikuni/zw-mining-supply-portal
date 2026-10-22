@@ -1,4 +1,5 @@
 import { CompaniesService } from './companies.service';
+import type { CompanyUpdatesService } from '../notifications/company-updates.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import { asPrisma, Row, user } from '../test-utils/users';
 
@@ -52,7 +53,8 @@ function makePrisma() {
     },
   };
   fake.$transaction = async (ops: Promise<unknown>[]) => Promise.all(ops);
-  return { state, service: new CompaniesService(asPrisma<PrismaService>(fake)) };
+  // None of these tests change verification, so the company emails are never queued.
+  return { state, service: new CompaniesService(asPrisma<PrismaService>(fake), {} as CompanyUpdatesService) };
 }
 
 const OWNER = user('co1', 'COMPANY_ADMIN');

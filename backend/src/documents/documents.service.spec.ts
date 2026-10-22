@@ -2,12 +2,13 @@ import { DocumentsService } from './documents.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { DocumentStatus } from '@prisma/client';
 import { asPrisma, Row } from '../test-utils/users';
+import type { CompanyUpdatesService } from '../notifications/company-updates.service';
 
 const statusMatches = (current: string, cond: unknown) =>
   cond === undefined ? true : typeof cond === 'string' ? current === cond : (cond as { in: string[] }).in.includes(current);
 
 function makePrisma(documents: Row[] = [], companies: Row[] = []) {
-  const state = { documents, companies, beforeUpdate: undefined as undefined | (() => void) };
+  const state = { documents, companies, reviewEmails: [] as Row[], beforeUpdate: undefined as undefined | (() => void) };
   const client: Row = {
     document: {
       create: async ({ data }: Row) => {
@@ -32,8 +33,15 @@ function makePrisma(documents: Row[] = [], companies: Row[] = []) {
       },
     },
   };
-  client.$transaction = async (fn: (tx: Row) => Promise<unknown>) => fn(client);
-  return { state, service: new DocumentsService(asPrisma<PrismaService>(client)) };
+  client.$transaction = async (fn: (tx: Row) => Promise<unknown>) => fn({ ...client, isTx: true });
+  // Records the review emails queued, and on which client.
+  const companyUpdates = {
+    enqueueDocumentReviewed: async (tx: Row, documentId: string) => {
+      state.reviewEmails.push({ documentId, inTransaction: tx.isTx === true });
+      return 1;
+    },
+  } as unknown as CompanyUpdatesService;
+  return { state, service: new DocumentsService(asPrisma<PrismaService>(client), companyUpdates) };
 }
 
 const D = (iso: string) => new Date(iso);
@@ -47,6 +55,21 @@ const pending = (over: Row = {}): Row => ({
   ...over,
 });
 const review = (status: DocumentStatus, reviewNote?: string, expiresAt?: string) => ({ status, reviewNote, expiresAt });
+
+describe('DocumentsService.review — telling the company', () => {
+  it.each(['APPROVED', 'REJECTED'] as const)('queues the %s email inside the review transaction', async (status) => {
+    const { state, service } = makePrisma([pending()]);
+    await service.review('d1', review(status, 'Unreadable scan'), 'v@portal.test');
+    expect(state.reviewEmails).toEqual([{ documentId: 'd1', inTransaction: true }]);
+  });
+
+  it('queues nothing for a refused review', async () => {
+    const { state, service } = makePrisma([pending({ status: 'APPROVED' })]);
+    await expect(service.review('d1', review('REJECTED', 'x'), 'v')).rejects.toMatchObject({ status: 409 });
+    await expect(service.review('d1', review('REJECTED'), 'v')).rejects.toMatchObject({ status: 400 });
+    expect(state.reviewEmails).toEqual([]);
+  });
+});
 
 describe('DocumentsService.review — a document is reviewed once', () => {
   it('approves a pending document and records the reviewer from the token', async () => {
