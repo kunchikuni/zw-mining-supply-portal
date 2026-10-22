@@ -2,6 +2,7 @@ import { CompaniesService } from './companies.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { VerificationStatus } from '@prisma/client';
 import { asPrisma, Row } from '../test-utils/users';
+import type { CompanyUpdatesService } from '../notifications/company-updates.service';
 
 function makePrisma(companies: Row[], documents: Row[] = []) {
   const calls: Row = {};
@@ -10,7 +11,7 @@ function makePrisma(companies: Row[], documents: Row[] = []) {
     company: {
       findUnique: async ({ where }: Row) => {
         const c = companies.find((x) => x.id === where.id);
-        return c ? { id: c.id, type: c.type } : null;
+        return c ? { id: c.id, type: c.type, verificationStatus: c.verificationStatus } : null;
       },
       update: async ({ where, data }: Row) => Object.assign(companies.find((c) => c.id === where.id)!, data),
       findMany: async (args: Row) => {
@@ -25,10 +26,39 @@ function makePrisma(companies: Row[], documents: Row[] = []) {
           .map((d) => ({ docType: 'TAX_CLEARANCE', expiresAt: null, reviewedBy: null, ...d })),
     },
   };
-  return { fake, service: new CompaniesService(asPrisma<PrismaService>(fake)) };
+  (fake as Row).$transaction = async (fn: (tx: Row) => Promise<unknown>) => fn({ ...fake, isTx: true });
+  // Records the verification emails queued, and on which client.
+  const companyUpdates = {
+    enqueueVerificationChange: async (tx: Row, companyId: string, from: string, to: string) => {
+      if (calls.failEmail) throw new Error('simulated outbox failure');
+      (calls.emails ??= []).push({ companyId, from, to, inTransaction: tx.isTx === true });
+      return 1;
+    },
+  } as unknown as CompanyUpdatesService;
+  return { fake, service: new CompaniesService(asPrisma<PrismaService>(fake), companyUpdates) };
 }
 
 const supplier = (over: Row = {}): Row => ({ id: 'sup1', type: 'SUPPLIER', verificationStatus: 'PENDING', ...over });
+
+describe('CompaniesService.setVerificationStatus — telling the company', () => {
+  it('hands the old and new status to the emails, inside the same transaction as the change', async () => {
+    const { fake, service } = makePrisma([supplier()], [{ companyId: 'sup1', status: 'APPROVED' }]);
+    await service.setVerificationStatus('sup1', 'VERIFIED');
+    expect(fake.calls.emails).toEqual([{ companyId: 'sup1', from: 'PENDING', to: 'VERIFIED', inTransaction: true }]);
+  });
+
+  it('queues nothing when the change is refused (409)', async () => {
+    const { fake, service } = makePrisma([supplier()], [{ companyId: 'sup1', status: 'PENDING' }]);
+    await expect(service.setVerificationStatus('sup1', 'VERIFIED')).rejects.toMatchObject({ status: 409 });
+    expect(fake.calls.emails).toBeUndefined();
+  });
+
+  it("fails the change if its email can't be queued (Postgres rolls the update back)", async () => {
+    const { fake, service } = makePrisma([supplier({ verificationStatus: 'VERIFIED' })]);
+    fake.calls.failEmail = true;
+    await expect(service.setVerificationStatus('sup1', 'REJECTED')).rejects.toThrow('simulated outbox failure');
+  });
+});
 
 describe('CompaniesService.setVerificationStatus', () => {
   it('refuses to mark a company VERIFIED with no approved document (409)', async () => {

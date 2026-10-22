@@ -9,6 +9,7 @@ import { CreateDocumentDto } from './dto/create-document.dto';
 import { ReviewDocumentDto } from './dto/review-document.dto';
 import { DocumentStatus, DocumentType, VerificationStatus } from '@prisma/client';
 import { DOCUMENT_NAMES, EXPIRY_REQUIRED, NEVER_EXPIRES, isLapsed, lapsedBefore } from './document-expiry';
+import { CompanyUpdatesService } from '../notifications/company-updates.service';
 
 // Shared by upload and approval: a company registration never takes an
 // expiry date, and a document can't be added or approved once it has lapsed.
@@ -23,7 +24,10 @@ function checkExpiry(docType: DocumentType, expiresAt: Date | null, explicit: bo
 
 @Injectable()
 export class DocumentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private companyUpdates: CompanyUpdatesService,
+  ) {}
 
   // Submitting a document puts an unverified (or previously rejected)
   // company into PENDING, which is what lands it in the verifier's queue.
@@ -106,15 +110,18 @@ export class DocumentsService {
     }
 
     // Still conditional on PENDING: two verifiers acting at once can't both
-    // decide it, and the hourly expiry sweep can't be overwritten.
-    const { count } = await this.prisma.document.updateMany({
-      where: { id: documentId, status: DocumentStatus.PENDING },
-      data: { status: dto.status, reviewedBy, reviewNote, expiresAt },
+    // decide it, and the hourly expiry sweep can't be overwritten. The
+    // company is emailed the decision in the same transaction.
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.document.updateMany({
+        where: { id: documentId, status: DocumentStatus.PENDING },
+        data: { status: dto.status, reviewedBy, reviewNote, expiresAt },
+      });
+      if (count !== 1) {
+        throw new ConflictException('This document has already been reviewed');
+      }
+      await this.companyUpdates.enqueueDocumentReviewed(tx, documentId);
+      return tx.document.findUniqueOrThrow({ where: { id: documentId } });
     });
-    if (count !== 1) {
-      throw new ConflictException('This document has already been reviewed');
-    }
-
-    return this.prisma.document.findUniqueOrThrow({ where: { id: documentId } });
   }
 }

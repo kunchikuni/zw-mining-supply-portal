@@ -13,6 +13,12 @@ export function startOfHarareDay(date: Date): Date {
   return new Date(Math.floor(harareLocal / DAY_MS) * DAY_MS - HARARE_UTC_OFFSET_MS);
 }
 
+// The calendar day it is in Harare at `date`, as midnight UTC: the form a
+// stored calendar date (deadline, expiry) takes, so the two compare directly.
+export function harareCalendarDay(date: Date): Date {
+  return new Date(startOfHarareDay(date).getTime() + HARARE_UTC_OFFSET_MS);
+}
+
 // The Harare midnight that ends it: the first instant of the next day.
 export function endOfHarareDay(date: Date): Date {
   return new Date(startOfHarareDay(date).getTime() + DAY_MS);

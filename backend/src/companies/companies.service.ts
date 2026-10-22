@@ -22,10 +22,14 @@ import {
   hashInviteCode,
 } from '../auth/invite-code';
 import { describeTypes, isCurrentApproval, lapsedDocumentTypes } from '../documents/document-expiry';
+import { CompanyUpdatesService } from '../notifications/company-updates.service';
 
 @Injectable()
 export class CompaniesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private companyUpdates: CompanyUpdatesService,
+  ) {}
 
   // Creating a company also mints the one-time code that makes its first user
   // the COMPANY_ADMIN. The plaintext is returned here and never stored — the
@@ -188,7 +192,7 @@ export class CompaniesService {
   async setVerificationStatus(companyId: string, status: VerificationStatus) {
     const company = await this.prisma.company.findUnique({
       where: { id: companyId },
-      select: { id: true, type: true },
+      select: { id: true, type: true, verificationStatus: true },
     });
     if (!company || company.type === CompanyType.PLATFORM) {
       throw new NotFoundException('Company not found');
@@ -213,9 +217,15 @@ export class CompaniesService {
       }
     }
 
-    return this.prisma.company.update({
-      where: { id: companyId },
-      data: { verificationStatus: status },
+    // The company hears about the decision (verified, declined, or no longer
+    // verified), queued in the same transaction as the change.
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id: companyId },
+        data: { verificationStatus: status },
+      });
+      await this.companyUpdates.enqueueVerificationChange(tx, companyId, company.verificationStatus, status, new Date());
+      return updated;
     });
   }
 
