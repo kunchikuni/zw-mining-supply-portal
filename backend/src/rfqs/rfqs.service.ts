@@ -12,6 +12,7 @@ import { withRevisionHistory } from '../bids/bid-revisions';
 import { BidStatus, CompanyType, Prisma, RfqStatus, VerificationStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import { RfqAlertsService } from '../notifications/rfq-alerts.service';
+import { BidUpdatesService } from '../notifications/bid-updates.service';
 
 // Where a mine can take an RFQ by hand. AWARDED is deliberately not a target:
 // it's reached only by accepting a bid (BidsService.setStatus), so an RFQ can
@@ -34,6 +35,7 @@ export class RfqsService {
   constructor(
     private prisma: PrismaService,
     private rfqAlerts: RfqAlertsService,
+    private bidUpdates: BidUpdatesService,
   ) {}
 
   // Only mines post RFQs: suppliers bid on them and staff verify companies.
@@ -164,16 +166,22 @@ export class RfqsService {
     }
 
     // Conditional on the status we just validated against, so two requests
-    // racing from the same starting state can't both be applied.
-    const { count } = await this.prisma.rfq.updateMany({
-      where: { id, status: rfq.status },
-      data: { status },
+    // racing from the same starting state can't both be applied. Cancelling
+    // also emails the suppliers whose bids were still in play, queued in the
+    // same transaction so a failed cancel tells nobody.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.rfq.updateMany({
+        where: { id, status: rfq.status },
+        data: { status },
+      });
+      if (count !== 1) {
+        throw new ConflictException('This RFQ was just changed — reload and try again');
+      }
+      if (status === RfqStatus.CANCELLED) {
+        await this.bidUpdates.enqueueRfqCancelled(tx, id);
+      }
+      return tx.rfq.findUniqueOrThrow({ where: { id } });
     });
-    if (count !== 1) {
-      throw new ConflictException('This RFQ was just changed — reload and try again');
-    }
-
-    const updated = await this.prisma.rfq.findUniqueOrThrow({ where: { id } });
     return this.withBiddingState(updated);
   }
 

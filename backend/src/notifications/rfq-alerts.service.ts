@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { CompanyType, Prisma, VerificationStatus } from '@prisma/client';
 import { biddingClosesAt } from '../rfqs/bidding-window';
 import { AlertRfq, buildRfqAlert } from './rfq-alert';
+import { appUrlFrom } from './email-layout';
 
 // Queues "new RFQ" emails. Called by RfqsService.create inside the transaction
 // that creates the RFQ, so an RFQ that fails to save emails nobody, and an
@@ -12,7 +13,7 @@ export class RfqAlertsService {
   private readonly appUrl: string;
 
   constructor(config: ConfigService) {
-    this.appUrl = (config.get<string>('APP_URL') || 'http://localhost:3001').replace(/\/+$/, '');
+    this.appUrl = appUrlFrom(config);
   }
 
   // Everyone who could bid on it and wants to hear about it: active users who
