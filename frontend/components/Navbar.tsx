@@ -98,11 +98,11 @@ export function Navbar() {
                 </ButtonLink>
               )}
               <Link
-                href="/account/password"
+                href="/account"
                 aria-current={pathname.startsWith('/account') ? 'page' : undefined}
                 className="px-2 text-[12px] font-medium uppercase tracking-[0.14em] text-gray-600 transition hover:text-ink"
               >
-                Password
+                Account
               </Link>
               <Button variant="ghost" size="sm" onClick={logout}>
                 Sign out
@@ -167,8 +167,8 @@ export function Navbar() {
                       Post an RFQ
                     </ButtonLink>
                   )}
-                  <ButtonLink href="/account/password" variant="secondary" size="sm">
-                    Change password
+                  <ButtonLink href="/account" variant="secondary" size="sm">
+                    Account
                   </ButtonLink>
                   <Button variant="secondary" size="sm" onClick={logout}>
                     Sign out

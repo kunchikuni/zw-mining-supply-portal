@@ -1,5 +1,6 @@
 import { BidsService } from './bids.service';
 import { RfqsService } from '../rfqs/rfqs.service';
+import type { RfqAlertsService } from '../notifications/rfq-alerts.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { BidStatus } from '@prisma/client';
 import { asPrisma, Row, user } from '../test-utils/users';
@@ -107,7 +108,8 @@ function makeDb(rfqs: Row[], bids: Row[], companies: Row[] = []) {
     }
   };
   const p = asPrisma<PrismaService>(prisma);
-  return { state, service: new BidsService(p, new RfqsService(p)) };
+  // Bids never create RFQs, so the alerts dependency is never called here.
+  return { state, service: new BidsService(p, new RfqsService(p, {} as RfqAlertsService)) };
 }
 
 const rfq = (over: Row = {}): Row => ({

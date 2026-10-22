@@ -9,9 +9,17 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
-import { ChangePasswordDto, RegisterDto, LoginDto } from './dto/auth.dto';
+import { ChangePasswordDto, RegisterDto, LoginDto, UpdateMeDto } from './dto/auth.dto';
 import { hashInviteCode } from './invite-code';
 import { sessionCutoff } from './session';
+
+const ACCOUNT_FIELDS = {
+  email: true,
+  fullName: true,
+  role: true,
+  rfqAlerts: true,
+  company: { select: { id: true, name: true, type: true } },
+} as const;
 
 // One message for every way a code can be bad (unknown, expired, used, wrong
 // email) so the endpoint can't be used to probe which codes exist.
@@ -108,6 +116,22 @@ export class AuthService {
       },
     });
     return this.issueToken(user.id, user.email, user.companyId, user.role);
+  }
+
+  // The caller's own account, for the Account page. Never the password hash
+  // or session fields.
+  async me(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: ACCOUNT_FIELDS });
+    if (!user) throw new UnauthorizedException('Your session has ended — sign in again');
+    return user;
+  }
+
+  async updateMe(userId: string, dto: UpdateMeDto) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { rfqAlerts: dto.rfqAlerts },
+      select: ACCOUNT_FIELDS,
+    });
   }
 
   private issueToken(sub: string, email: string, companyId: string, role: string) {
