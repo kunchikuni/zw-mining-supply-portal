@@ -17,7 +17,7 @@ import { formatDate } from '@/lib/format';
 // awarded or cancelled RFQ has nowhere else to be reached from. This is that
 // place: every RFQ the signed-in company has posted, whatever its status.
 export default function MyRfqsPage() {
-  const { user, token } = useAuth();
+  const { user, token, companyType } = useAuth();
   const [rfqs, setRfqs] = useState<Rfq[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +65,7 @@ export default function MyRfqsPage() {
         eyebrow="For mines"
         title="My RFQs"
         description="Everything your company has posted — open, closed, awarded or cancelled."
-        actions={<ButtonLink href="/rfqs/new">Post an RFQ</ButtonLink>}
+        actions={companyType === 'MINE' ? <ButtonLink href="/rfqs/new">Post an RFQ</ButtonLink> : undefined}
       />
 
       {error && <ErrorBanner message={error} />}

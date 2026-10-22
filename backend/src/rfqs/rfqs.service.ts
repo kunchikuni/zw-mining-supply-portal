@@ -9,7 +9,7 @@ import { CreateRfqDto } from './dto/create-rfq.dto';
 import { biddingClosesAt, earliestBiddableDeadline, isBiddingOpen } from './bidding-window';
 import { seesEveryBid, visibleBidsWhere } from '../bids/bid-visibility';
 import { withRevisionHistory } from '../bids/bid-revisions';
-import { BidStatus, Prisma, RfqStatus, VerificationStatus } from '@prisma/client';
+import { BidStatus, CompanyType, Prisma, RfqStatus, VerificationStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import { RfqAlertsService } from '../notifications/rfq-alerts.service';
 
@@ -36,10 +36,22 @@ export class RfqsService {
     private rfqAlerts: RfqAlertsService,
   ) {}
 
+  // Only mines post RFQs: suppliers bid on them and staff verify companies.
+  // A supplier's RFQ would also email its competitors (every supplier in the
+  // category). The type is read from the database, not the token.
+  //
   // The RFQ and its email alerts to eligible suppliers are written in one
   // transaction: alerts are only ever queued for an RFQ that exists, and an
   // RFQ never exists without them. The outbox sends them afterwards.
   async create(mineCompanyId: string, dto: CreateRfqDto) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: mineCompanyId },
+      select: { type: true },
+    });
+    if (company?.type !== CompanyType.MINE) {
+      throw new ForbiddenException('Only mining companies can post RFQs');
+    }
+
     const rfq = await this.prisma.$transaction(async (tx) => {
       const created = await tx.rfq.create({
         data: { ...dto, mineCompanyId, deadline: new Date(dto.deadline) },

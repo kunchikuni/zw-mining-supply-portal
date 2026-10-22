@@ -27,8 +27,10 @@ const PUBLIC_LINKS: NavLink[] = [
 const SIGNED_IN_LINKS: NavLink[] = [
   { href: '/dashboard', label: 'Dashboard', isActive: (p) => p.startsWith('/dashboard') },
   { href: '/bids/mine', label: 'My bids', isActive: (p) => p.startsWith('/bids/mine') },
-  { href: '/rfqs/mine', label: 'My RFQs', isActive: (p) => p === '/rfqs/mine' },
 ];
+
+// Only mines post RFQs, so only they get "My RFQs" (and "Post an RFQ").
+const MINE_LINKS: NavLink[] = [{ href: '/rfqs/mine', label: 'My RFQs', isActive: (p) => p === '/rfqs/mine' }];
 
 // Portal staff (verifiers / admins) aren't mines or suppliers, so they get
 // the verification workspace instead of the buyer/seller links.
@@ -40,7 +42,7 @@ const STAFF_LINKS: NavLink[] = [
 const ADMIN_LINKS: NavLink[] = [{ href: '/staff', label: 'Staff', isActive: (p) => p.startsWith('/staff') }];
 
 export function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, companyType, logout } = useAuth();
   const pathname = usePathname() ?? '/';
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -50,11 +52,12 @@ export function Navbar() {
   }, [pathname]);
 
   const staff = isStaffRole(user?.role);
+  const mine = Boolean(user) && companyType === 'MINE';
   const links = !user
     ? PUBLIC_LINKS
     : staff
       ? [...PUBLIC_LINKS, ...STAFF_LINKS, ...(user.role === 'PLATFORM_ADMIN' ? ADMIN_LINKS : [])]
-      : [...PUBLIC_LINKS, ...SIGNED_IN_LINKS];
+      : [...PUBLIC_LINKS, ...SIGNED_IN_LINKS, ...(mine ? MINE_LINKS : [])];
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200/70 bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/75">
@@ -92,7 +95,7 @@ export function Navbar() {
         <div className="hidden items-center gap-3 lg:flex">
           {user ? (
             <>
-              {!staff && (
+              {mine && (
                 <ButtonLink href="/rfqs/new" size="sm">
                   Post an RFQ
                 </ButtonLink>
@@ -162,7 +165,7 @@ export function Navbar() {
             <div className="flex flex-wrap items-center gap-3 py-4">
               {user ? (
                 <>
-                  {!staff && (
+                  {mine && (
                     <ButtonLink href="/rfqs/new" size="sm">
                       Post an RFQ
                     </ButtonLink>

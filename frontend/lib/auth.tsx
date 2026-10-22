@@ -1,8 +1,8 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import type { AuthUser } from './types';
-import { SESSION_ENDED_EVENT } from './api';
+import type { AuthUser, CompanyType } from './types';
+import { getMe, SESSION_ENDED_EVENT } from './api';
 
 // NOTE for production hardening: this MVP stores the JWT in localStorage for
 // simplicity. That's readable by any script on the page (XSS risk). A
@@ -12,6 +12,11 @@ import { SESSION_ENDED_EVENT } from './api';
 interface AuthContextValue {
   token: string | null;
   user: AuthUser | null;
+  // The signed-in user's company type, so pages show only what that kind of
+  // company can do (only mines post RFQs). The token doesn't carry it, so it's
+  // loaded from /auth/me: null when signed out, while loading, or if that
+  // failed. The server enforces the rules either way.
+  companyType: CompanyType | null;
   setToken: (token: string | null) => void;
   logout: () => void;
 }
@@ -30,6 +35,24 @@ export function decodeToken(token: string): AuthUser | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [companyType, setCompanyType] = useState<CompanyType | null>(null);
+
+  useEffect(() => {
+    setCompanyType(null);
+    if (!token) return;
+    let stale = false;
+    getMe(token)
+      .then((me) => {
+        if (!stale) setCompanyType(me.company.type);
+      })
+      .catch(() => {
+        // Leave it unknown: the mine-only links stay hidden and the server
+        // still decides.
+      });
+    return () => {
+      stale = true;
+    };
+  }, [token]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('zwsp_token');
@@ -66,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ token, user, setToken, logout }}>
+    <AuthContext.Provider value={{ token, user, companyType, setToken, logout }}>
       {children}
     </AuthContext.Provider>
   );

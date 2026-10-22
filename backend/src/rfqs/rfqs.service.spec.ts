@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { RfqsService } from './rfqs.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RfqStatus } from '@prisma/client';
@@ -22,8 +23,15 @@ function matches(row: Row, where: Row): boolean {
   return true;
 }
 
+// Who may post: only a MINE. 'mine1' is the mine the fixtures use throughout.
+const COMPANIES: Row[] = [
+  { id: 'mine1', type: 'MINE' },
+  { id: 'sup1', type: 'SUPPLIER' },
+  { id: 'staff1', type: 'PLATFORM' },
+];
+
 function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
-  const calls = { bidFindMany: 0, ratingFindMany: 0, alerts: [] as Row[], inTransaction: false, failCreate: false, failAlerts: false };
+  const calls = { bidFindMany: 0, ratingFindMany: 0, rfqCreate: 0, alerts: [] as Row[], inTransaction: false, failCreate: false, failAlerts: false };
   // `_count: { select: { bids: ... } }`, honouring a `status: { not }` filter.
   const countBids = (rfqId: string, include?: Row) => {
     const not = include?._count?.select?.bids?.where?.status?.not;
@@ -50,6 +58,7 @@ function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
         return { count: hit.length };
       },
       create: async ({ data }: Row) => {
+        calls.rfqCreate++;
         if (calls.failCreate) throw new Error('simulated insert failure');
         return { id: 'new', status: 'OPEN', ...data, mine: { name: 'Mine One' }, category: { name: 'PPE' } };
       },
@@ -61,6 +70,12 @@ function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
           .filter((b) => matches(b, where))
           .sort((a, b) => a.submittedAt - b.submittedAt)
           .map((b) => ({ ...b, supplier: { id: b.supplierCompanyId } }));
+      },
+    },
+    company: {
+      findUnique: async ({ where, select }: Row) => {
+        const c = COMPANIES.find((x) => x.id === where.id);
+        return c && select ? Object.fromEntries(Object.keys(select).map((k) => [k, c[k]])) : (c ?? null);
       },
     },
     rating: {
@@ -441,5 +456,24 @@ describe('RfqsService.create', () => {
     fake.calls.failCreate = true;
     await expect(service.create('mine1', dto)).rejects.toThrow('simulated insert failure');
     expect(fake.calls.alerts).toEqual([]);
+  });
+
+  it.each([
+    ['a supplier', 'sup1'],
+    ['portal staff', 'staff1'],
+    ['a company that no longer exists', 'gone'],
+  ])('refuses %s with 403, saving no RFQ and queuing no alerts', async (_who, companyId) => {
+    const { fake, service } = makePrisma([]);
+    const attempt = service.create(companyId, dto);
+    await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(attempt).rejects.toThrow('Only mining companies can post RFQs');
+    expect(fake.calls.rfqCreate).toBe(0);
+    expect(fake.calls.alerts).toEqual([]);
+  });
+
+  it('lets a mine post', async () => {
+    const { fake, service } = makePrisma([]);
+    await service.create('mine1', dto);
+    expect(fake.calls.rfqCreate).toBe(1);
   });
 });
