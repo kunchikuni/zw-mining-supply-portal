@@ -7,7 +7,18 @@ import type { Row } from '../test-utils/users';
 // — so these tests check who actually gets mail.
 function makeTx(bids: Row[]) {
   const outbox: Row[] = [];
+  const active = (users: Row[], where?: Row) => users.filter((u) => (where?.disabledAt === null ? u.disabledAt == null : true));
   const shape = (b: Row, select: Row) => {
+    // enqueueWithdrawal asks for the mine's users (under rfq.mine) instead.
+    if (!select.supplier.select.users) {
+      const mineSelect = select.rfq.select.mine.select;
+      return {
+        amount: b.amount,
+        currency: b.currency,
+        supplier: { name: b.supplier.name },
+        rfq: { ...b.rfq, mine: { name: b.rfq.mine.name, users: active(b.mineUsers ?? [], mineSelect.users.where) } },
+      };
+    }
     const usersWhere = select.supplier.select.users.where;
     return {
       id: b.id,
@@ -114,6 +125,35 @@ describe('BidUpdatesService.enqueueRfqCancelled — telling the bidders', () => 
   it('queues nothing when no bid is still in play', async () => {
     const { tx, outbox } = makeTx([bids[2], bids[3]]);
     expect(await service().enqueueRfqCancelled(tx as never, 'r1')).toBe(0);
+    expect(outbox).toEqual([]);
+  });
+
+  it('an early close goes to the same live bidders, as a different email', async () => {
+    const { tx, outbox } = makeTx(bids);
+    expect(await service().enqueueRfqClosedEarly(tx as never, 'r1')).toBe(2);
+    expect(outbox.map((o) => o.key).sort()).toEqual(['rfq-closed-early:r1:ann', 'rfq-closed-early:r1:cat']);
+    expect(outbox[0].subject).toBe('Bidding closed early: Hard hats');
+  });
+});
+
+describe('BidUpdatesService.enqueueWithdrawal — telling the mine', () => {
+  const withdrawn = bidFrom('b1', 'sup1', [person('ann')], {
+    status: 'WITHDRAWN',
+    mineUsers: [person('mo'), person('max'), person('old', { disabledAt: new Date() })],
+  });
+
+  it("emails every active user at the RFQ's mine, never the supplier", async () => {
+    const { tx, outbox } = makeTx([withdrawn]);
+    expect(await service().enqueueWithdrawal(tx as never, 'b1')).toBe(2);
+    expect(outbox.map((o) => o.to).sort()).toEqual(['max@example.test', 'mo@example.test']);
+    expect(outbox.map((o) => o.key).sort()).toEqual(['bid-withdrawn:b1:max', 'bid-withdrawn:b1:mo']);
+    expect(outbox[0].subject).toBe('Bid withdrawn: Hard hats');
+    expect(outbox[0].text).toContain('sup1 Ltd has withdrawn its bid');
+  });
+
+  it('queues nothing when the mine has no active users', async () => {
+    const { tx, outbox } = makeTx([{ ...withdrawn, mineUsers: [] }]);
+    expect(await service().enqueueWithdrawal(tx as never, 'b1')).toBe(0);
     expect(outbox).toEqual([]);
   });
 });

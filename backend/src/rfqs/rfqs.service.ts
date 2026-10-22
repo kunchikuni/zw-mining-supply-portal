@@ -166,9 +166,11 @@ export class RfqsService {
     }
 
     // Conditional on the status we just validated against, so two requests
-    // racing from the same starting state can't both be applied. Cancelling
-    // also emails the suppliers whose bids were still in play, queued in the
-    // same transaction so a failed cancel tells nobody.
+    // racing from the same starting state can't both be applied. Cancelling,
+    // or closing while bidding was still open, also emails the suppliers whose
+    // bids are in play, queued in the same transaction so a failure tells
+    // nobody. Closing after the deadline changes nothing for them.
+    const closedEarly = status === RfqStatus.CLOSED && isBiddingOpen(rfq);
     const updated = await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.rfq.updateMany({
         where: { id, status: rfq.status },
@@ -179,6 +181,8 @@ export class RfqsService {
       }
       if (status === RfqStatus.CANCELLED) {
         await this.bidUpdates.enqueueRfqCancelled(tx, id);
+      } else if (closedEarly) {
+        await this.bidUpdates.enqueueRfqClosedEarly(tx, id);
       }
       return tx.rfq.findUniqueOrThrow({ where: { id } });
     });
