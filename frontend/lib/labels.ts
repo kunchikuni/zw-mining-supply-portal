@@ -36,3 +36,27 @@ export function sentenceCase(value: string) {
 export function isStaffRole(role: string | undefined | null) {
   return role === 'VERIFIER' || role === 'PLATFORM_ADMIN';
 }
+
+// What a portal email is about, by its outbox key's prefix.
+const EMAIL_KIND_LABELS: Record<string, string> = {
+  'rfq-alert': 'New RFQ alert',
+  'bid-shortlisted': 'Bid shortlisted',
+  'bid-accepted': 'Bid accepted',
+  'bid-rejected': 'Bid not selected',
+  'bid-withdrawn': 'Bid withdrawn',
+  'rfq-cancelled': 'RFQ cancelled',
+  'rfq-closed-early': 'Bidding closed early',
+  'company-verified': 'Company verified',
+  'company-declined': 'Verification declined',
+  'company-no-longer-verified': 'Verification removed',
+  'doc-approved': 'Document approved',
+  'doc-rejected': 'Document rejected',
+  'doc-expired': 'Document expired',
+  'doc-expiry-30': 'Expiry reminder (30 days)',
+  'doc-expiry-7': 'Expiry reminder (7 days)',
+};
+
+export function emailKindLabel(kind: string) {
+  const fallback = kind.replace(/-/g, ' ');
+  return EMAIL_KIND_LABELS[kind] ?? fallback.charAt(0).toUpperCase() + fallback.slice(1);
+}

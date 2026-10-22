@@ -1,4 +1,5 @@
 import type {
+  FailedEmail,
   Account,
   Bid,
   BidStatus,
@@ -107,6 +108,19 @@ export function getUnsubscribe(unsubscribeToken: string) {
 
 export function unsubscribe(unsubscribeToken: string) {
   return request<UnsubscribeStatus>(`/email/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`, { method: 'POST' });
+}
+
+// ---- Undelivered emails (PLATFORM_ADMIN only) ----
+export function getFailedEmails(token: string) {
+  return request<FailedEmail[]>('/emails/failed', { token });
+}
+
+export function getFailedEmailCount(token: string) {
+  return request<{ count: number }>('/emails/failed/count', { token });
+}
+
+export function retryEmail(token: string, id: string) {
+  return request<{ id: string; status: string }>(`/emails/${id}/retry`, { method: 'POST', token });
 }
 
 // ---- Staff (PLATFORM_ADMIN only) ----

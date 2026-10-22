@@ -231,3 +231,18 @@ export interface LocalContentSummary {
   monthlyTrend: MonthlyTrendPoint[];
   recentAwards: RecentAward[];
 }
+
+// An email the outbox gave up on after 6 attempts (GET /emails/failed).
+export interface FailedEmail {
+  id: string;
+  // What it's about: the outbox key's prefix, e.g. "rfq-alert", "bid-accepted".
+  kind: string;
+  to: string;
+  subject: string;
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  sendBefore: string | null;
+  // False for an RFQ alert whose bidding has closed: sending it is pointless.
+  retryable: boolean;
+}
