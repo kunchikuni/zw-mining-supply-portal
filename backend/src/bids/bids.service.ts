@@ -189,10 +189,12 @@ export class BidsService {
         });
       }
 
-      // The mine's decision is emailed to the supplier, queued in this same
-      // transaction. A withdrawal is the supplier's own doing: nothing to tell.
+      // The other side hears about it, queued in this same transaction: the
+      // supplier gets the mine's decision, the mine gets a withdrawal.
       if (status === BidStatus.SHORTLISTED || status === BidStatus.ACCEPTED || status === BidStatus.REJECTED) {
         await this.bidUpdates.enqueueDecision(tx, id, status);
+      } else if (status === BidStatus.WITHDRAWN) {
+        await this.bidUpdates.enqueueWithdrawal(tx, id);
       }
 
       return tx.bid.findUniqueOrThrow({ where: { id } });

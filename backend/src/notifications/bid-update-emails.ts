@@ -85,6 +85,42 @@ export function buildBidDecisionEmail(
   });
 }
 
+export function buildRfqClosedEarlyEmail(rfq: UpdateRfq, bid: UpdateBid, recipient: UpdateRecipient, appUrl: string) {
+  return renderEmail(`Bidding closed early: ${rfq.title}`, {
+    eyebrow: 'Bidding closed early',
+    title: rfq.title,
+    greeting: `Hi ${recipient.fullName},`,
+    intro: `${rfq.mine.name} has closed this request for quote to new bids before its deadline. Your bid stands and can still be shortlisted or accepted, but it can no longer be revised.`,
+    details: [...bidDetails(rfq, bid), ['Was due to close', formatDay(rfq.deadline)]],
+    button: { label: 'View the RFQ', href: `${appUrl}/rfqs/${rfq.id}` },
+    ...footer(recipient, appUrl),
+  });
+}
+
+// To the mine: a supplier pulled its bid. `recipient.company` is the mine.
+export function buildBidWithdrawnEmail(
+  rfq: UpdateRfq,
+  bid: UpdateBid,
+  supplierName: string,
+  recipient: UpdateRecipient,
+  appUrl: string,
+) {
+  return renderEmail(`Bid withdrawn: ${rfq.title}`, {
+    eyebrow: 'Bid withdrawn',
+    title: rfq.title,
+    greeting: `Hi ${recipient.fullName},`,
+    intro: `${supplierName} has withdrawn its bid on your request for quote.`,
+    details: [
+      ['Supplier', supplierName],
+      ['Category', rfq.category.name],
+      ['Their bid', formatAmount(bid)],
+    ],
+    button: { label: 'View the RFQ', href: `${appUrl}/rfqs/${rfq.id}` },
+    footer: `You're receiving this because ${recipient.company.name} posted this RFQ on ZW Supplier Portal.`,
+    footerLink: { label: 'See all your RFQs', href: `${appUrl}/rfqs/mine` },
+  });
+}
+
 export function buildRfqCancelledEmail(rfq: UpdateRfq, bid: UpdateBid, recipient: UpdateRecipient, appUrl: string) {
   return renderEmail(`RFQ cancelled: ${rfq.title}`, {
     eyebrow: 'Request for quote cancelled',

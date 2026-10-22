@@ -20,6 +20,7 @@ function makeDb(rfqs: Row[], bids: Row[], companies: Row[] = []) {
     created: [] as Row[],
     locks: [] as string[],
     decisions: [] as Row[],
+    withdrawals: [] as Row[],
     failDecisionEmail: false,
     failRfqUpdate: false,
     beforeBidUpdate: undefined as undefined | (() => void),
@@ -117,6 +118,10 @@ function makeDb(rfqs: Row[], bids: Row[], companies: Row[] = []) {
     enqueueDecision: async (tx: Row, bidId: string, decision: string) => {
       if (state.failDecisionEmail) throw new Error('simulated outbox failure');
       state.decisions.push({ bidId, decision, inTransaction: tx !== prisma });
+      return 1;
+    },
+    enqueueWithdrawal: async (tx: Row, bidId: string) => {
+      state.withdrawals.push({ bidId, inTransaction: tx !== prisma });
       return 1;
     },
   } as unknown as BidUpdatesService;
@@ -339,17 +344,20 @@ describe('BidsService.setStatus — telling the supplier', () => {
     expect(state.decisions).toEqual([{ bidId: 'b1', decision: status, inTransaction: true }]);
   });
 
-  it('emails nobody when the supplier withdraws its own bid', async () => {
+  it('tells the mine, not the supplier, when the supplier withdraws its own bid', async () => {
     const { state, service } = makeDb([rfq()], [bid()]);
     await service.setStatus('b1', SUPPLIER, 'WITHDRAWN');
     expect(state.bids[0].status).toBe('WITHDRAWN');
+    expect(state.withdrawals).toEqual([{ bidId: 'b1', inTransaction: true }]);
     expect(state.decisions).toEqual([]);
   });
 
   it('emails nobody about a refused change', async () => {
     const { state, service } = makeDb([rfq()], [bid({ status: 'REJECTED' })]);
     await expect(service.setStatus('b1', MINE, 'ACCEPTED')).rejects.toMatchObject({ status: 409 });
+    await expect(service.setStatus('b1', SUPPLIER, 'WITHDRAWN')).rejects.toMatchObject({ status: 409 });
     expect(state.decisions).toEqual([]);
+    expect(state.withdrawals).toEqual([]);
   });
 
   it("rolls the decision back if its email can't be queued: no silent accept", async () => {

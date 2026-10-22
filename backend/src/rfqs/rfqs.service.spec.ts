@@ -32,7 +32,7 @@ const COMPANIES: Row[] = [
 ];
 
 function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
-  const calls = { bidFindMany: 0, ratingFindMany: 0, rfqCreate: 0, alerts: [] as Row[], cancelled: [] as Row[], inTransaction: false, failCreate: false, failAlerts: false };
+  const calls = { bidFindMany: 0, ratingFindMany: 0, rfqCreate: 0, alerts: [] as Row[], cancelled: [] as Row[], closedEarly: [] as Row[], inTransaction: false, failCreate: false, failAlerts: false };
   // `_count: { select: { bids: ... } }`, honouring a `status: { not }` filter.
   const countBids = (rfqId: string, include?: Row) => {
     const not = include?._count?.select?.bids?.where?.status?.not;
@@ -107,6 +107,10 @@ function makePrisma(rfqs: Row[], bids: Row[] = [], ratings: Row[] = []) {
   const bidUpdates = {
     enqueueRfqCancelled: async (tx: Row, rfqId: string) => {
       calls.cancelled.push({ rfqId, inTransaction: calls.inTransaction, sameTx: tx.isTx === true });
+      return 1;
+    },
+    enqueueRfqClosedEarly: async (tx: Row, rfqId: string) => {
+      calls.closedEarly.push({ rfqId, inTransaction: calls.inTransaction, sameTx: tx.isTx === true });
       return 1;
     },
   };
@@ -231,16 +235,25 @@ describe('RfqsService.setStatus — telling the bidders', () => {
     expect(fake.calls.cancelled).toEqual([{ rfqId: 'r1', inTransaction: true, sameTx: true }]);
   });
 
-  it('closing an RFQ tells nobody (bids are still reviewed)', async () => {
+  it('closing while bidding is still open tells the bidders, in the same transaction', async () => {
     const { fake, service } = makePrisma([rfq('r1')]);
     await service.setStatus('r1', owner, 'CLOSED');
+    expect(fake.calls.closedEarly).toEqual([{ rfqId: 'r1', inTransaction: true, sameTx: true }]);
     expect(fake.calls.cancelled).toEqual([]);
   });
 
-  it('a refused cancel tells nobody', async () => {
+  it('closing after the deadline tells nobody: bidding had already stopped', async () => {
+    const { fake, service } = makePrisma([rfq('r1', { deadline: D('2000-01-01T00:00:00Z') })]);
+    await service.setStatus('r1', owner, 'CLOSED');
+    expect(fake.calls.closedEarly).toEqual([]);
+  });
+
+  it('a refused cancel or close tells nobody', async () => {
     const { fake, service } = makePrisma([rfq('r1', { status: 'AWARDED' })]);
     await expect(service.setStatus('r1', owner, 'CANCELLED')).rejects.toMatchObject({ status: 409 });
+    await expect(service.setStatus('r1', owner, 'CLOSED')).rejects.toMatchObject({ status: 409 });
     expect(fake.calls.cancelled).toEqual([]);
+    expect(fake.calls.closedEarly).toEqual([]);
   });
 });
 
