@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, VerificationStatus } from '@prisma/client';
+import { CompanyType, Prisma, VerificationStatus } from '@prisma/client';
 import { biddingClosesAt } from '../rfqs/bidding-window';
 import { AlertRfq, buildRfqAlert } from './rfq-alert';
 
@@ -16,9 +16,10 @@ export class RfqAlertsService {
   }
 
   // Everyone who could bid on it and wants to hear about it: active users who
-  // haven't turned alerts off, at a VERIFIED company that lists the RFQ's
-  // category — the same eligibility BidsService enforces — other than the
-  // posting mine itself. Returns how many emails were queued.
+  // haven't turned alerts off, at a VERIFIED supplier that lists the RFQ's
+  // category — the same eligibility BidsService enforces
+  // (RfqsService.supplierIsEligible) — other than the posting mine itself.
+  // Returns how many emails were queued.
   async enqueue(tx: Prisma.TransactionClient, rfq: AlertRfq & { mineCompanyId: string; categoryId: string }) {
     const recipients = await tx.user.findMany({
       where: {
@@ -26,6 +27,7 @@ export class RfqAlertsService {
         rfqAlerts: true,
         company: {
           id: { not: rfq.mineCompanyId },
+          type: CompanyType.SUPPLIER,
           verificationStatus: VerificationStatus.VERIFIED,
           categories: { some: { categoryId: rfq.categoryId } },
         },

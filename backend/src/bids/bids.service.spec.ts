@@ -129,7 +129,9 @@ const bid = (over: Row = {}): Row => ({
   submittedAt: D('2026-10-01'),
   ...over,
 });
-const verified = (id: string): Row => ({ id, verificationStatus: 'VERIFIED', categories: [{ categoryId: 'cat1' }] });
+const verified = (id: string): Row => ({ id, type: 'SUPPLIER', verificationStatus: 'VERIFIED', categories: [{ categoryId: 'cat1' }] });
+// Verified and listed under the RFQ's category, but a mine (or staff): not a bidder.
+const verifiedMine = (id: string): Row => ({ ...verified(id), type: 'MINE' });
 const MINE = user('mine1', 'COMPANY_ADMIN');
 const dto = { rfqId: 'r1', amount: 100 };
 
@@ -165,19 +167,25 @@ describe('BidsService.create — who can bid, and when', () => {
   });
 
   it("refuses the posting mine bidding on its own RFQ, even when it would otherwise be eligible", async () => {
-    const { state, service } = makeDb([rfq()], [], [verified('mine1')]);
+    const { state, service } = makeDb([rfq()], [], [verifiedMine('mine1')]);
     await expect(service.create('mine1', dto)).rejects.toMatchObject({ status: 403, message: expect.stringMatching(/own RFQ/) });
     expect(state.created).toHaveLength(0);
   });
 
-  it("does not block another mine bidding on a different mine's RFQ", async () => {
-    const { state, service } = makeDb([rfq()], [], [verified('mine2')]);
-    await service.create('mine2', dto);
-    expect(state.created).toHaveLength(1);
+  it.each([
+    ['another mine', verifiedMine('mine2')],
+    ['portal staff', { ...verified('mine2'), type: 'PLATFORM' }],
+  ])("refuses %s, even verified and listed under the RFQ's category: only suppliers bid", async (_who, company) => {
+    const { state, service } = makeDb([rfq()], [], [company]);
+    await expect(service.create('mine2', dto)).rejects.toMatchObject({
+      status: 403,
+      message: expect.stringMatching(/Only a VERIFIED supplier/),
+    });
+    expect(state.created).toHaveLength(0);
   });
 
   it('checks the RFQ state first: own CLOSED RFQ is a 409', async () => {
-    const { service } = makeDb([rfq({ status: 'CLOSED' })], [], [verified('mine1')]);
+    const { service } = makeDb([rfq({ status: 'CLOSED' })], [], [verifiedMine('mine1')]);
     await expect(service.create('mine1', dto)).rejects.toMatchObject({ status: 409 });
   });
 });
