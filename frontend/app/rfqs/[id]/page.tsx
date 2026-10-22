@@ -18,7 +18,7 @@ import { formatDate } from '@/lib/format';
 
 export default function RfqDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user, token } = useAuth();
+  const { user, token, companyType } = useAuth();
   const [rfq, setRfq] = useState<Rfq | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,12 +78,13 @@ export default function RfqDetailPage() {
   const seesAllBids = isOwner || user?.role === 'PLATFORM_ADMIN';
   const bidCount = rfq._count?.bids ?? rfq.bids?.length ?? 0;
 
-  // Eligibility (verified + category match), the RFQ being open, and the bidder
-  // not being the posting mine are all enforced server-side by BidsService;
-  // this is just a UX nicety so the wrong audience doesn't see a form they'd be
-  // rejected from submitting. `biddingOpen` comes from the API (status OPEN and
-  // inside the deadline window) so the deadline rule lives in one place.
-  const canBid = Boolean(user) && !isOwner && rfq.biddingOpen;
+  // Eligibility (a verified supplier listed in the category), the RFQ being
+  // open, and the bidder not being the posting mine are all enforced
+  // server-side by BidsService; this is just a UX nicety so the wrong audience
+  // (mines, staff) doesn't see a form they'd be rejected from submitting.
+  // `biddingOpen` comes from the API (status OPEN and inside the deadline
+  // window) so the deadline rule lives in one place.
+  const canBid = companyType === 'SUPPLIER' && !isOwner && rfq.biddingOpen;
   // The caller's live bid, if any — bidding again revises it. (Filtered by
   // company because a platform admin gets every bid back, not just its own.)
   const liveOwnBid = canBid

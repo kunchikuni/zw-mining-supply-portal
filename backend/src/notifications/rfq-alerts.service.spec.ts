@@ -15,6 +15,7 @@ function makeTx(users: Row[]) {
               (where.disabledAt === null ? u.disabledAt == null : true) &&
               (where.rfqAlerts === undefined || u.rfqAlerts === where.rfqAlerts) &&
               u.company.id !== where.company.id.not &&
+              u.company.type === where.company.type &&
               u.company.verificationStatus === where.company.verificationStatus &&
               u.company.categoryIds.includes(where.company.categories.some.categoryId),
           )
@@ -44,6 +45,7 @@ const service = (appUrl?: string) =>
 const company = (id: string, over: Row = {}): Row => ({
   id,
   name: `${id} Ltd`,
+  type: 'SUPPLIER',
   verificationStatus: 'VERIFIED',
   categoryIds: ['ppe'],
   ...over,
@@ -77,15 +79,17 @@ describe('RfqAlertsService.enqueue — who is told about a new RFQ', () => {
     person('gone', sup, { disabledAt: new Date() }),
     person('unverified', company('newco', { verificationStatus: 'PENDING' })),
     person('elsewhere', company('fuel', { categoryIds: ['fuel'] })),
-    person('poster', company('mine1')), // the posting mine's own staff
-    person('othermine', company('mine2')), // a verified mine listing the category could bid too
+    person('poster', company('mine1', { type: 'MINE' })), // the posting mine's own staff
+    // A verified mine listing the category: mines don't bid, so no email.
+    person('othermine', company('mine2', { type: 'MINE' })),
+    person('staff', company('platform', { type: 'PLATFORM' })),
   ];
 
   it('queues one email per eligible, opted-in, active user — and nobody else', async () => {
     const { tx, outbox } = makeTx(users);
     const count = await service().enqueue(tx as never, rfq);
-    expect(outbox.map((o) => o.to).sort()).toEqual(['alice@example.test', 'bob@example.test', 'othermine@example.test']);
-    expect(count).toBe(3);
+    expect(outbox.map((o) => o.to).sort()).toEqual(['alice@example.test', 'bob@example.test']);
+    expect(count).toBe(2);
   });
 
   it('keys each email by RFQ and user, so the same alert is never queued twice', async () => {

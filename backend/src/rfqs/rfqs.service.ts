@@ -198,6 +198,8 @@ export class RfqsService {
 
   // Only suppliers whose verificationStatus is VERIFIED and who list this
   // RFQ's category should be eligible to bid — enforced here, not just in UI.
+  // A mine can list categories and be verified too, but mines post RFQs; they
+  // don't bid on each other's. RfqAlertsService emails exactly this audience.
   async supplierIsEligible(rfqId: string, supplierCompanyId: string) {
     const rfq = await this.prisma.rfq.findUnique({ where: { id: rfqId } });
     if (!rfq) return false;
@@ -205,7 +207,13 @@ export class RfqsService {
       where: { id: supplierCompanyId },
       include: { categories: true },
     });
-    if (!supplier || supplier.verificationStatus !== VerificationStatus.VERIFIED) return false;
+    if (
+      !supplier ||
+      supplier.type !== CompanyType.SUPPLIER ||
+      supplier.verificationStatus !== VerificationStatus.VERIFIED
+    ) {
+      return false;
+    }
     return supplier.categories.some((c: { categoryId: string }) => c.categoryId === rfq.categoryId);
   }
 

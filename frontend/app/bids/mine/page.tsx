@@ -15,7 +15,7 @@ import { PageHeader } from '@/components/PageHeader';
 // RFQ board only shows RFQs that are still open, so an accepted, rejected or
 // closed one would otherwise have no page that links to it.
 export default function MyBidsPage() {
-  const { user, token } = useAuth();
+  const { user, token, companyType } = useAuth();
   const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +60,28 @@ export default function MyBidsPage() {
           <ButtonLink href="/login" size="sm">
             Sign in
           </ButtonLink>
+        }
+      />
+    );
+  }
+
+  // Only suppliers bid (the server refuses anyone else), so there's nothing
+  // here for a mine or staff.
+  if (companyType && companyType !== 'SUPPLIER') {
+    return (
+      <EmptyState
+        title="Bids are placed by suppliers"
+        description={
+          companyType === 'MINE'
+            ? 'The bids on your requests for quote are on each RFQ, reached from My RFQs.'
+            : "Your account doesn't bid on RFQs."
+        }
+        action={
+          companyType === 'MINE' ? (
+            <ButtonLink href="/rfqs/mine" size="sm">
+              Go to My RFQs
+            </ButtonLink>
+          ) : undefined
         }
       />
     );

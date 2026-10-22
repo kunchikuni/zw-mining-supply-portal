@@ -24,13 +24,16 @@ const PUBLIC_LINKS: NavLink[] = [
   },
 ];
 
-const SIGNED_IN_LINKS: NavLink[] = [
+// Mines post RFQs and report on local content ("Post an RFQ" is a button);
+// suppliers bid. Each sees only its own side.
+const MINE_LINKS: NavLink[] = [
   { href: '/dashboard', label: 'Dashboard', isActive: (p) => p.startsWith('/dashboard') },
-  { href: '/bids/mine', label: 'My bids', isActive: (p) => p.startsWith('/bids/mine') },
+  { href: '/rfqs/mine', label: 'My RFQs', isActive: (p) => p === '/rfqs/mine' },
 ];
 
-// Only mines post RFQs, so only they get "My RFQs" (and "Post an RFQ").
-const MINE_LINKS: NavLink[] = [{ href: '/rfqs/mine', label: 'My RFQs', isActive: (p) => p === '/rfqs/mine' }];
+const SUPPLIER_LINKS: NavLink[] = [
+  { href: '/bids/mine', label: 'My bids', isActive: (p) => p.startsWith('/bids/mine') },
+];
 
 // Portal staff (verifiers / admins) aren't mines or suppliers, so they get
 // the verification workspace instead of the buyer/seller links.
@@ -53,11 +56,12 @@ export function Navbar() {
 
   const staff = isStaffRole(user?.role);
   const mine = Boolean(user) && companyType === 'MINE';
+  const supplier = Boolean(user) && companyType === 'SUPPLIER';
   const links = !user
     ? PUBLIC_LINKS
     : staff
       ? [...PUBLIC_LINKS, ...STAFF_LINKS, ...(user.role === 'PLATFORM_ADMIN' ? ADMIN_LINKS : [])]
-      : [...PUBLIC_LINKS, ...SIGNED_IN_LINKS, ...(mine ? MINE_LINKS : [])];
+      : [...PUBLIC_LINKS, ...(mine ? MINE_LINKS : []), ...(supplier ? SUPPLIER_LINKS : [])];
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200/70 bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/75">

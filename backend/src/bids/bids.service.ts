@@ -53,7 +53,7 @@ export class BidsService {
     const eligible = await this.rfqsService.supplierIsEligible(dto.rfqId, supplierCompanyId);
     if (!eligible) {
       throw new ForbiddenException(
-        'Supplier must be VERIFIED and listed under this RFQ\'s category to bid',
+        'Only a VERIFIED supplier listed under this RFQ\'s category can bid',
       );
     }
 
