@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
+import { getFailedEmailCount } from '@/lib/api';
 import { isStaffRole } from '@/lib/labels';
 import { BrandMark } from './BrandMark';
 import { Button, ButtonLink } from './Button';
@@ -41,13 +42,42 @@ const STAFF_LINKS: NavLink[] = [
   { href: '/verify', label: 'Verification', isActive: (p) => p.startsWith('/verify') },
 ];
 
-// Platform admins also manage the staff accounts themselves.
-const ADMIN_LINKS: NavLink[] = [{ href: '/staff', label: 'Staff', isActive: (p) => p.startsWith('/staff') }];
+// Platform admins also manage the staff accounts themselves, and see emails
+// the outbox gave up on: the count shows in the link, so an outage is noticed.
+const adminLinks = (failedEmails: number): NavLink[] => [
+  { href: '/staff', label: 'Staff', isActive: (p) => p.startsWith('/staff') },
+  {
+    href: '/emails',
+    label: failedEmails > 0 ? `Emails (${failedEmails})` : 'Emails',
+    isActive: (p) => p.startsWith('/emails'),
+  },
+];
 
 export function Navbar() {
-  const { user, companyType, logout } = useAuth();
+  const { user, token, companyType, logout } = useAuth();
   const pathname = usePathname() ?? '/';
   const [menuOpen, setMenuOpen] = useState(false);
+  const isAdmin = user?.role === 'PLATFORM_ADMIN';
+  const [failedEmails, setFailedEmails] = useState(0);
+
+  // Re-checked on each page change, so retrying from the Emails page shows.
+  useEffect(() => {
+    if (!token || !isAdmin) {
+      setFailedEmails(0);
+      return;
+    }
+    let stale = false;
+    getFailedEmailCount(token)
+      .then(({ count }) => {
+        if (!stale) setFailedEmails(count);
+      })
+      .catch(() => {
+        // The badge is a nicety; the Emails page shows any error.
+      });
+    return () => {
+      stale = true;
+    };
+  }, [token, isAdmin, pathname]);
 
   // Close the mobile menu whenever the route changes.
   useEffect(() => {
@@ -60,7 +90,7 @@ export function Navbar() {
   const links = !user
     ? PUBLIC_LINKS
     : staff
-      ? [...PUBLIC_LINKS, ...STAFF_LINKS, ...(user.role === 'PLATFORM_ADMIN' ? ADMIN_LINKS : [])]
+      ? [...PUBLIC_LINKS, ...STAFF_LINKS, ...(isAdmin ? adminLinks(failedEmails) : [])]
       : [...PUBLIC_LINKS, ...(mine ? MINE_LINKS : []), ...(supplier ? SUPPLIER_LINKS : [])];
 
   return (
