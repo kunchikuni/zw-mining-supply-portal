@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Patch, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto, RegisterDto, LoginDto, UpdateMeDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -14,9 +14,12 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
+  // The client address is part of the sign-in throttle. Behind a reverse
+  // proxy, Express must trust it (app.set('trust proxy', …)) for this to be
+  // the caller's address rather than the proxy's.
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  login(@Body() dto: LoginDto, @Ip() ip: string) {
+    return this.authService.login(dto, ip);
   }
 
   // The account is the caller's, from the token — there's no way to name
