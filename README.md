@@ -125,7 +125,7 @@ See `backend/prisma/schema.prisma`. Core entities: `Company` (mine or supplier),
 cd backend
 cp .env.example .env       # set DATABASE_URL and JWT_SECRET; SMTP_* for email (see below)
 npm install
-npx prisma migrate dev --name init
+npm run prisma:deploy     # applies the committed migrations
 npm run seed
 npm run create:staff -- --email you@example.com --name "Your Name" --role PLATFORM_ADMIN   # first admin (prints a temporary password); add other staff on the Staff page
 npm run start:dev          # http://localhost:3000
@@ -219,7 +219,7 @@ docker run -d --name zwsp-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 
 - **Document links are privacy-gated.** `GET /companies/:id` redacts `fileUrl` on every document unless the requester is the owning company or a verifier/admin — found and fixed in the previous pass; previously any anonymous visitor could read a company's raw tax-clearance/CR6 links.
 - Verified with `npm install` + `tsc --noEmit` (backend and frontend) + full `next build` (frontend, all 10 routes) and a full manual trace of every guarded endpoint, including a grep sweep confirming service/controller signatures line up and no client-trusted company-id references remain. **Not yet verified with a live server run** — this sandbox can't download the Prisma query engine binary (`binaries.prisma.sh` isn't reachable here; confirmed there's no alternate legitimate source). Run this once locally to confirm at runtime:
   ```bash
-  cd backend && npx prisma migrate dev --name init && npm run start:dev
+  cd backend && npm run prisma:deploy && npm run start:dev
   # in another terminal:
   curl -i http://localhost:3000/reporting/local-content              # expect 401 (no token)
   curl -i -X PATCH http://localhost:3000/companies/<id>/verification-status \
@@ -234,13 +234,10 @@ docker run -d --name zwsp-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 
                                                                        # expect 403 (invalid invite)
   ```
 - **Run Prisma from `backend/`, never the repo root.** The root has no `package.json`, so `npx prisma` there skips the project's pinned Prisma 5.22 and downloads npm's `latest` (currently an 8.x pre-release) — whose CLI has no `migrate` command and fails with `No command registered for 'migrate'`. From `backend/`, `npx prisma --version` should report 5.22.0; `npm run prisma:migrate -- --name <name>` always uses the pinned version.
-- **Schema change — run a migration.** This pass adds the `Invite` model: from `backend/`, `npx prisma migrate dev --name add-invites` (or `npx prisma db push` on a throwaway DB). Users registered before it are all `COMPANY_MEMBER`, so no company in an existing dev DB has an admin yet — promote one by hand (`UPDATE "User" SET role = 'COMPANY_ADMIN' WHERE email = '…';`) or re-register.
-- **Seventh schema change: email headers** — a nullable `EmailOutbox.headers` (JSON), for List-Unsubscribe on RFQ alerts. Additive. From `backend/`, `npx prisma migrate dev --name email-headers` (or `npx prisma db push` on the dev DB). Also set `API_URL` in `backend/.env`.
-- **Sixth schema change: the email outbox** — an `EmailOutbox` table with an `EmailStatus` enum, and `User.rfqAlerts` (default `true`). Additive. From `backend/`, `npx prisma migrate dev --name email-outbox`.
-- **Fifth schema change: account controls** — `User.disabledAt`, `User.tokensValidAfter` (both nullable) and `User.mustChangePassword` (default `false`). Additive. From `backend/`, `npx prisma migrate dev --name account-controls`.
-- **Fourth schema change: bid revisions** — a `SUPERSEDED` value on `BidStatus` and a nullable, unique `Bid.revisionOfId`. From `backend/`, `npx prisma migrate dev --name bid-revisions`. Nothing to backfill: existing bids simply have no history.
-- **Third schema change: a `PLATFORM` company type** for portal staff. It only adds an enum value: `npx prisma migrate dev --name platform-company-type` from `backend/`.
-- **Second schema change: ratings are unique per (RFQ, author, rated company).** From `backend/`, `npx prisma migrate dev --name unique-ratings`. Ratings could be posted by anyone before, so a dev database may hold duplicates or ratings that don't match any accepted bid; the migration fails on duplicates. Look first with `SELECT "rfqId", "authorCompanyId", "ratedCompanyId", COUNT(*) FROM "Rating" GROUP BY 1, 2, 3 HAVING COUNT(*) > 1;` and clear anything that shouldn't be there before migrating.
+- **The schema is managed by Prisma Migrate.** `backend/prisma/migrations/0_init` is a baseline of the whole schema as of the email work (invites, ratings, the `PLATFORM` type, bid revisions, account controls, the email outbox and its headers). New changes go in as migrations on top: change `schema.prisma`, then from `backend/` run `npm run prisma:migrate -- --name <what-changed>` and commit the folder it creates.
+  - **A new database** (or production): `npm run prisma:deploy` applies every migration in order.
+  - **A dev database built earlier with `prisma db push`**, like the throwaway one, already has these tables. Check it matches with `npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma` (it should say "No difference detected"), then mark the baseline as applied once with `npx prisma migrate resolve --applied 0_init`. After that, `npx prisma migrate status` says it is up to date.
+  - **Users registered before invites existed** are all `COMPANY_MEMBER`, so such a company has no admin; promote one by hand (`UPDATE "User" SET role = 'COMPANY_ADMIN' WHERE email = '…';`).
 - **Verified for the invite + category-editor pass**: backend and frontend `tsc --noEmit`, full `next build`, the invite redemption/authorization/category logic exercised against an in-memory Prisma fake (concurrent redemption, rollback on duplicate email, cross-company invite attempt, replace-set semantics), and the register → category editor → invite-link flow driven in a browser against a stub API. The real NestJS server against real Postgres is still unrun.
 
 ## Working conventions
