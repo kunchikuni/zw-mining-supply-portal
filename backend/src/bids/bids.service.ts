@@ -10,7 +10,7 @@ import { CreateBidDto } from './dto/create-bid.dto';
 import { isBiddingOpen } from '../rfqs/bidding-window';
 import { visibleBidsWhere } from './bid-visibility';
 import { LIVE_BID_STATUSES, withRevisionHistory } from './bid-revisions';
-import { BidStatus, RfqStatus } from '@prisma/client';
+import { BidStatus, Prisma, RfqStatus } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import { BidUpdatesService } from '../notifications/bid-updates.service';
 
@@ -92,7 +92,15 @@ export class BidsService {
         }
       }
 
-      return tx.bid.create({ data: { ...dto, supplierCompanyId, revisionOfId: live?.id } });
+      // The database guarantees one live bid too (a partial unique index, from
+      // the one_live_bid_per_supplier migration). The lock means it shouldn't
+      // fire; if it ever does, that's a conflict, not a server error.
+      return tx.bid.create({ data: { ...dto, supplierCompanyId, revisionOfId: live?.id } }).catch((err) => {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ConflictException('You already have a live bid on this RFQ — reload and try again');
+        }
+        throw err;
+      });
     });
   }
 
