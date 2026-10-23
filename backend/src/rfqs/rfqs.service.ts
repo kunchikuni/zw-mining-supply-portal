@@ -68,34 +68,19 @@ export class RfqsService {
   // The board of RFQs suppliers can bid on. Nothing closes an RFQ when its
   // deadline passes — it stays OPEN until its mine acts — so the status filter
   // alone would leave dead RFQs on the board forever. They're dropped here,
-  // except for the posting mine: this listing is its only way back to its own
-  // RFQ (there's no "my RFQs" page), so it still sees them, flagged
-  // `biddingOpen: false`, after the live ones.
-  async findOpen(
-    categoryId?: string,
-    province?: string,
-    requesterCompanyId?: string,
-    now: Date = new Date(),
-  ) {
+  // for everyone: a mine finds its own expired RFQs on "My RFQs" (findMine).
+  async findOpen(categoryId?: string, province?: string, now: Date = new Date()) {
     const rfqs = await this.prisma.rfq.findMany({
       where: {
         status: RfqStatus.OPEN,
         categoryId,
         province,
-        OR: [
-          { deadline: { gte: earliestBiddableDeadline(now) } },
-          ...(requesterCompanyId ? [{ mineCompanyId: requesterCompanyId }] : []),
-        ],
+        deadline: { gte: earliestBiddableDeadline(now) },
       },
       include: { mine: true, category: true },
       orderBy: { deadline: 'asc' },
     });
-
-    const withState = rfqs.map((rfq) => this.withBiddingState(rfq, now));
-    const live = withState.filter((rfq) => rfq.biddingOpen);
-    // Most recently expired first.
-    const expired = withState.filter((rfq) => !rfq.biddingOpen).reverse();
-    return [...live, ...expired];
+    return rfqs.map((rfq) => this.withBiddingState(rfq, now));
   }
 
   // Bids are sealed (see bids/bid-visibility.ts): the count is public, but the

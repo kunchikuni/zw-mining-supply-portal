@@ -176,44 +176,17 @@ describe('RfqsService.findOpen — the public board', () => {
     rfq('closedFuture', { deadline: D('2026-12-01T00:00:00Z'), status: 'CLOSED' }),
   ];
 
-  it('shows anonymous visitors only biddable RFQs, soonest deadline first', async () => {
+  it('shows only biddable RFQs, soonest deadline first: no expired or non-OPEN ones', async () => {
     const { service } = makePrisma(board());
-    const out = await service.findOpen(undefined, undefined, undefined, NOW);
+    const out = await service.findOpen(undefined, undefined, NOW);
     expect(ids(out)).toEqual(['today', 'future']);
     expect(out.every((r) => r.biddingOpen)).toBe(true);
   });
 
   it("lists the deadline-day RFQ until 22:00Z and drops it after", async () => {
     const { service } = makePrisma(board());
-    expect(ids(await service.findOpen(undefined, undefined, undefined, D('2026-10-20T21:59:59Z')))).toContain('today');
-    expect(ids(await service.findOpen(undefined, undefined, undefined, D('2026-10-20T22:00:00Z')))).not.toContain('today');
-  });
-
-  it('shows the posting mine its own expired RFQ, after the live ones, flagged not biddable', async () => {
-    const { service } = makePrisma(board());
-    const out = await service.findOpen(undefined, undefined, 'X', NOW);
-    expect(ids(out)).toEqual(['today', 'future', 'expiredX']);
-    expect(out.find((r) => r.id === 'expiredX')?.biddingOpen).toBe(false);
-  });
-
-  it("never shows a mine another mine's expired RFQ", async () => {
-    const { service } = makePrisma(board());
-    expect(ids(await service.findOpen(undefined, undefined, 'X', NOW))).not.toContain('expiredY');
-    expect(ids(await service.findOpen(undefined, undefined, 'Y', NOW))).toEqual(['today', 'future', 'expiredY']);
-  });
-
-  it('never lists a non-OPEN RFQ, even to its owner', async () => {
-    const { service } = makePrisma(board());
-    expect(ids(await service.findOpen(undefined, undefined, 'mine1', NOW))).not.toContain('closedFuture');
-  });
-
-  it('orders expired RFQs most recently expired first', async () => {
-    const { service } = makePrisma([
-      rfq('old', { deadline: D('2026-09-01T00:00:00Z') }),
-      rfq('newer', { deadline: D('2026-10-05T00:00:00Z') }),
-      rfq('live', { deadline: D('2026-11-01T00:00:00Z') }),
-    ]);
-    expect(ids(await service.findOpen(undefined, undefined, 'mine1', NOW))).toEqual(['live', 'newer', 'old']);
+    expect(ids(await service.findOpen(undefined, undefined, D('2026-10-20T21:59:59Z')))).toContain('today');
+    expect(ids(await service.findOpen(undefined, undefined, D('2026-10-20T22:00:00Z')))).not.toContain('today');
   });
 
   it('still applies the category and province filters', async () => {
@@ -222,7 +195,7 @@ describe('RfqsService.findOpen — the public board', () => {
       rfq('b', { categoryId: 'c2', province: 'Harare' }),
       rfq('c', { categoryId: 'c1', province: 'Midlands' }),
     ]);
-    expect(ids(await service.findOpen('c1', 'Harare', undefined, NOW))).toEqual(['a']);
+    expect(ids(await service.findOpen('c1', 'Harare', NOW))).toEqual(['a']);
   });
 });
 

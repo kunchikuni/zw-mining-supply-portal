@@ -273,18 +273,15 @@ export function setVerificationStatus(companyId: string, status: VerificationSta
 }
 
 // ---- RFQs ----
-// The token is optional: anonymous visitors get the public board, and a
-// signed-in mine additionally gets its own RFQs back after their deadline.
-export function getOpenRfqs(
-  filters: { categoryId?: string; province?: string } = {},
-  token?: string | null,
-) {
+// The public board: only RFQs still open for bidding, the same for everyone.
+// A mine's own expired RFQs are on "My RFQs" (getMyRfqs).
+export function getOpenRfqs(filters: { categoryId?: string; province?: string } = {}) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
     if (value) params.set(key, value);
   });
   const qs = params.toString();
-  return request<Rfq[]>(`/rfqs${qs ? `?${qs}` : ''}`, { token });
+  return request<Rfq[]>(`/rfqs${qs ? `?${qs}` : ''}`);
 }
 
 // Bids are sealed, so the token matters here: the posting mine gets every
