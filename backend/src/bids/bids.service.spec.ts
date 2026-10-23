@@ -3,7 +3,8 @@ import { RfqsService } from '../rfqs/rfqs.service';
 import type { RfqAlertsService } from '../notifications/rfq-alerts.service';
 import type { BidUpdatesService } from '../notifications/bid-updates.service';
 import type { PrismaService } from '../prisma/prisma.service';
-import type { BidStatus } from '@prisma/client';
+import { Prisma, type BidStatus } from '@prisma/client';
+import { LIVE_BID_STATUSES } from './bid-revisions';
 import { asPrisma, Row, user } from '../test-utils/users';
 
 const D = (iso: string) => new Date(iso);
@@ -25,7 +26,9 @@ function makeDb(rfqs: Row[], bids: Row[], companies: Row[] = []) {
     failRfqUpdate: false,
     beforeBidUpdate: undefined as undefined | (() => void),
     beforeLock: undefined as undefined | (() => void),
+    beforeBidCreate: undefined as undefined | (() => void),
   };
+  const isLive = (b: Row) => (LIVE_BID_STATUSES as string[]).includes(b.status);
   const build = (undo: Array<() => void>) => ({
     // Only BidsService.create's `SELECT status, deadline ... FOR UPDATE`.
     $queryRaw: async (_sql: TemplateStringsArray, id: string) => {
@@ -58,8 +61,14 @@ function makeDb(rfqs: Row[], bids: Row[], companies: Row[] = []) {
     },
     bid: {
       create: async ({ data }: Row) => {
+        state.beforeBidCreate?.();
         const n = state.created.length + 1;
         const row = { id: `new-${n}`, status: 'SUBMITTED', submittedAt: new Date(Date.UTC(2026, 9, 10, 0, 0, n)), ...data };
+        // As the one_live_bid_per_supplier partial unique index does.
+        const clash = (b: Row) => b.rfqId === row.rfqId && b.supplierCompanyId === row.supplierCompanyId && isLive(b);
+        if (isLive(row) && state.bids.some(clash)) {
+          throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' });
+        }
         state.created.push(row);
         state.bids.push(row);
         undo.push(() => {
@@ -272,6 +281,16 @@ describe('BidsService.create — a second bid revises the first', () => {
     };
     await expect(bidAgain(service)).rejects.toMatchObject({ status: 409 });
     expect(state.bids.map((b) => [b.id, b.status])).toEqual([['b1', 'SUBMITTED']]);
+    expect(state.created).toEqual([]);
+  });
+
+  it("answers 409, not 500, if the database's index refuses a second live bid", async () => {
+    const { state, service } = makeDb([rfq()], [], companies);
+    // A live bid that appears past the lock: only the database's index can catch it.
+    state.beforeBidCreate = () => {
+      state.bids.push(bid({ id: 'sneaked-in' }));
+    };
+    await expect(bidAgain(service)).rejects.toMatchObject({ status: 409, message: expect.stringContaining('live bid') });
     expect(state.created).toEqual([]);
   });
 

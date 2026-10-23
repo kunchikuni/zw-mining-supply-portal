@@ -2,7 +2,9 @@ import { BidStatus } from '@prisma/client';
 
 // A supplier has at most one live bid per RFQ. Bidding again while it's live
 // is a revision: the old row is kept, marked SUPERSEDED, and the new row
-// points back to it through revisionOfId (see BidsService.create).
+// points back to it through revisionOfId (see BidsService.create). The
+// database enforces it with a partial unique index over these same statuses
+// (the one_live_bid_per_supplier migration): change both together.
 export const LIVE_BID_STATUSES: BidStatus[] = [BidStatus.SUBMITTED, BidStatus.SHORTLISTED];
 
 type Versioned = { id: string; status: string; revisionOfId?: string | null };
