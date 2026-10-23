@@ -41,9 +41,13 @@ describe('RfqsController over HTTP', () => {
       expect(service.findOne).toHaveBeenLastCalledWith('abc-123', MINE);
     });
 
-    it('passes the caller company to findOpen (the board)', async () => {
-      await t.request('GET', '/rfqs?categoryId=c1', { as: MINE });
-      expect(service.findOpen).toHaveBeenCalledWith('c1', undefined, 'mine1');
+    it('serves the board the same to everyone: a signed-in mine gets the same call as an anonymous visitor', async () => {
+      expect((await t.request('GET', '/rfqs?categoryId=c1')).status).toBe(200);
+      expect((await t.request('GET', '/rfqs?categoryId=c1', { as: MINE })).status).toBe(200);
+      expect(service.findOpen.mock.calls).toEqual([
+        ['c1', undefined],
+        ['c1', undefined],
+      ]);
     });
   });
 
@@ -70,5 +74,6 @@ describe('RfqsController over HTTP', () => {
     expect(guardsOn(RfqsController, 'setStatus')).toContain(JwtAuthGuard);
     expect(guardsOn(RfqsController, 'create')).toContain(JwtAuthGuard);
     expect(guardsOn(RfqsController, 'findOne')).toContain(JwtOptionalAuthGuard);
+    expect(guardsOn(RfqsController, 'findOpen')).toEqual([]);
   });
 });

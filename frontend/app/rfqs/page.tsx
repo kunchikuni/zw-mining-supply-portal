@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { getCategories, getOpenRfqs, ApiError } from '@/lib/api';
 import type { Category, Rfq } from '@/lib/types';
-import { useAuth } from '@/lib/auth';
 import { RfqCard } from '@/components/RfqCard';
 import { CardSkeletonGrid } from '@/components/LoadingSkeleton';
 import { EmptyState } from '@/components/EmptyState';
@@ -11,7 +10,6 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 import { PageHeader } from '@/components/PageHeader';
 
 export default function RfqsPage() {
-  const { token } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [rfqs, setRfqs] = useState<Rfq[]>([]);
   const [categoryId, setCategoryId] = useState('');
@@ -25,15 +23,12 @@ export default function RfqsPage() {
   }, []);
 
   useEffect(() => {
-    // The stored token hydrates after first render, so this runs once
-    // anonymously and again with the token. Ignore the stale response if it
-    // lands second, or it would overwrite the signed-in mine's list.
+    // Switching category quickly can leave an earlier request in flight;
+    // ignore its response if it lands after the newer one.
     let stale = false;
     setLoading(true);
     setError(null);
-    // The token lets a signed-in mine see its own RFQs after their deadline
-    // (flagged "Bidding closed"); everyone else gets only what's biddable.
-    getOpenRfqs({ categoryId: categoryId || undefined }, token)
+    getOpenRfqs({ categoryId: categoryId || undefined })
       .then((list) => {
         if (!stale) setRfqs(list);
       })
@@ -46,7 +41,7 @@ export default function RfqsPage() {
     return () => {
       stale = true;
     };
-  }, [categoryId, token]);
+  }, [categoryId]);
 
   return (
     <div className="space-y-8">

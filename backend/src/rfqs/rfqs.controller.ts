@@ -19,16 +19,10 @@ export class RfqsController {
     return this.rfqsService.create(user.companyId, dto);
   }
 
-  // Public, but with the optional guard so the posting mine still sees its
-  // own RFQs after their deadline (see RfqsService.findOpen).
-  @UseGuards(JwtOptionalAuthGuard)
+  // Public, and the same for everyone: only RFQs still open for bidding.
   @Get()
-  findOpen(
-    @CurrentUser() user: JwtPayload | null,
-    @Query('categoryId') categoryId?: string,
-    @Query('province') province?: string,
-  ) {
-    return this.rfqsService.findOpen(categoryId, province, user?.companyId);
+  findOpen(@Query('categoryId') categoryId?: string, @Query('province') province?: string) {
+    return this.rfqsService.findOpen(categoryId, province);
   }
 
   // Every RFQ the caller's company has posted, in any status. Declared before
