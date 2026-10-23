@@ -143,7 +143,7 @@ docker run -d --name zwsp-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 
 
 ## Known gaps / next honest steps
 
-- **Auth hardening**: JWT is still in `localStorage` (XSS-readable). Production should move to an httpOnly cookie + refresh-token pair. Route-level guards and ownership checks are in place, and the account behind a token is re-checked on every request (see "Auth & authorization" below) — this remaining item is about the token's storage, not its enforcement. There's also no rate limiting on sign-in.
+- **Auth hardening**: JWT is still in `localStorage` (XSS-readable). Production should move to an httpOnly cookie + refresh-token pair. Route-level guards and ownership checks are in place, and the account behind a token is re-checked on every request (see "Auth & authorization" below) — this remaining item is about the token's storage, not its enforcement. Sign-in is rate-limited (see below), but only within one API process.
 - **Invite management is minimal**: admins can mint a one-time invite (`POST /companies/:id/invites`) but can't list pending ones, revoke one, or remove a user, and there's no way to hand over or add a second `COMPANY_ADMIN`. Staff accounts are managed on the Staff page, but a staff member's role can't be changed there, and company users can't be disabled — the mechanism (`User.disabledAt`) exists, only staff are reachable.
 - **Verification decisions are one-way in the UI**: a reviewed document can't be re-reviewed (by design), and the workspace offers verify/reject only for companies in `PENDING` — revoking an already-verified company means calling `PATCH /companies/:id/verification-status` directly. There's no audit history beyond `reviewedBy` / `reviewNote` on each document, and nobody is notified of a decision.
 - **The expiry sweep runs inside the API process** (at startup and at the top of every hour): it marks lapsed documents, takes verification away, and queues the lapse and reminder emails (see company emails below). With several instances each runs it. That's harmless, because every write is conditional and every email is keyed, but a single scheduled job would be tidier at scale.
@@ -162,6 +162,12 @@ docker run -d --name zwsp-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 
 
 ## Auth & authorization
 
+- **Sign-in is rate-limited** (`auth/login-throttle.ts`):
+  - **Per account:** after 5 failed sign-ins for one email address within 15 minutes, that address gets 429 ("Too many failed attempts. Try again in N minutes.") until the oldest failure ages out, even with the right password and from any address. Failures count for addresses that don't exist too (case-insensitive), so the limit doesn't reveal which accounts exist.
+  - **Per IP address:** one address gets 20 failures across all accounts, which stops spraying one password over many accounts.
+  - **Change password:** the current-password check has its own limit of 5 per account.
+  - **Details:** a successful sign-in clears that account's count, and the limit is checked before the password hash, so a locked-out guesser costs no bcrypt time.
+  - **Limitations:** counts live in memory, per API process. Behind several instances, move them to a shared store. Behind a reverse proxy, set Express's `trust proxy` so the IP is the caller's, not the proxy's.
 - `JwtStrategy` + `JwtAuthGuard` — any route with `@UseGuards(JwtAuthGuard)` requires a valid bearer token, and `JwtStrategy` re-reads the account on every request: a disabled account, or a token issued before the account's last password change or reset (`User.tokensValidAfter`), is refused (401), and `req.user`'s `{ sub, email, companyId, role }` comes from the database, so a role change applies at once. The frontend signs out whenever the API refuses its token.
 - `JwtOptionalAuthGuard` — decodes the token if present but never rejects; used on `GET /companies/:id` so the directory stays public while owners/verifiers get a fuller view.
 - `RolesGuard` + `@Roles(...)` — restricts a route to specific `UserRole` values. Used to lock verification (`PATCH /companies/:id/verification-status`, `GET /companies/verification-queue`) and document review (`GET /documents/review-queue`, `PATCH /documents/:id/review`) to `VERIFIER`/`PLATFORM_ADMIN`, and `POST /categories` to `PLATFORM_ADMIN`.
